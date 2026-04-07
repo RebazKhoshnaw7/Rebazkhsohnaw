@@ -1,11 +1,11 @@
 ---
-title: Finance Vault Dashboard 🔐
+title: Vault Dashboard 🔐
 colorFrom: purple
 colorTo: green
 sdk: static
 emoji: 📚
 tags:
-  - deepsite-v4
+  - Rebaz Khoshnaw
 ---
 
 # Finance Vault Dashboard 🔐
