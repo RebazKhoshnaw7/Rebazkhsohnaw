@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Finance Vault · Complete Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background: linear-gradient(135deg, #f0f4f8 0%, #e6eef7 100%); }
+        .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+        .gradient-text { background: linear-gradient(135deg, #1e3a5f 0%, #2e5a88 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .input-modern { transition: all 0.2s; border: 1px solid #e2e8f0; }
+        .input-modern:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); outline: none; }
+        .btn-hover { transition: all 0.2s; }
+        .btn-hover:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .table-cell-input { width: 100%; background: transparent; border: 1px solid transparent; border-radius: 6px; padding: 4px 8px; font-size: 0.875rem; transition: all 0.2s; }
+        .table-cell-input:hover { background: #f8fafc; border-color: #e2e8f0; }
+        .table-cell-input:focus { background: white; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); outline: none; }
+        .table-cell-input:disabled { background: #f1f5f9; color: #64748b; cursor: not-allowed; }
+        .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
+        .scrollbar-thin::-webkit-scrollbar-track { background: #f1f5f9; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        @media print {
+            body { background: white; }
+            .no-print { display: none !important; }
+            .print-container { box-shadow: none !important; border: none !important; margin: 0 !important; padding: 0 !important; }
+            .section-card { break-inside: avoid; margin-bottom: 20px !important; border: 1px solid #ddd !important; box-shadow: none !important; }
+            .table-cell-input { border: none !important; background: transparent !important; padding: 0 !important; box-shadow: none !important; -webkit-appearance: none; }
+            .action-column { display: none !important; }
+            th { background: #f8fafc !important; font-weight: 600 !important; border-bottom: 2px solid #333 !important; }
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-6 text-slate-800">
+
+<div id="appRoot" class="max-w-[1600px] mx-auto"></div>
+
+<script>
+    // Configuration & Constants
+    const ADMIN_EMAIL = "Rebaz.abdullah@Fast-pay.iq";
+    const DEFAULT_ADMIN_PW = "Admin@2026";
+    const MAX_LOG_ENTRIES = 200;
+
+    // State Management
+    let invoiceColumns = [], accountsColumns = [], fibColumns = [];
+    let invoiceData = [], accountsData = [], fibData = [];
+    let viewerPermissions = {}, userAccounts = [], activityLog = [], snapshots = {};
+    let currentUserEmail = null, userRole = null;
+
+    const DEFAULT_INVOICE_COLUMNS = [
+        { key: "area", label: "Area" }, { key: "invoiceNo", label: "Invoice No" }, { key: "submissionDate", label: "Submission Date" },
+        { key: "daysOutstand", label: "Days Outstanding" }, { key: "company", label: "Company" }, { key: "amount", label: "Amount (USD)" },
+        { key: "exchangeRate", label: "Exchange Rate" }, { key: "bankStatus", label: "Bank Status" }, { key: "topUpStatus", label: "Top-Up Status" }
+    ];
+    const DEFAULT_ACCOUNTS_COLUMNS = [
+        { key: "account", label: "Account" }, { key: "invoiceNo", label: "Invoice No" },
+        { key: "balance", label: "Balance" }, { key: "yesterdaySales", label: "Yesterday Sales" }
+    ];
+    const DEFAULT_FIB_COLUMNS = [
+        { key: "invoiceNo", label: "Invoice No" }, { key: "amount", label: "Amount" },
+        { key: "remaining", label: "Remaining" }, { key: "status", label: "Status" }
+    ];
+
+    // Utility Functions
+    function escapeHtml(str) { return String(str).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+    function simpleHash(str) { let h = 0; for (let i = 0; i < str.length; i++) { h = ((h << 5) - h) + str.charCodeAt(i); h |= 0; } return h.toString(16); }
+    function getDefaultTablePerms() { return { view: true, addRow: false, deleteRow: false, edit: true, addColumn: false, deleteColumn: false }; }
+
+    // Storage Functions
+    function loadColumnsAndData() {
+        invoiceColumns = JSON.parse(localStorage.getItem("dynamic_invoice_columns") || JSON.stringify(DEFAULT_INVOICE_COLUMNS));
+        accountsColumns = JSON.parse(localStorage.getItem("dynamic_accounts_columns") || JSON.stringify(DEFAULT_ACCOUNTS_COLUMNS));
+        fibColumns = JSON.parse(localStorage.getItem("dynamic_fib_columns") || JSON.stringify(DEFAULT_FIB_COLUMNS));
+        invoiceData = JSON.parse(localStorage.getItem("invoice_editable_grid") || "[]");
+        accountsData = JSON.parse(localStorage.getItem("accounts_table_data") || "[]");
+        fibData = JSON.parse(localStorage.getItem("fib_balance_data") || "[]");
+        
+        if (invoiceData.length === 0) {
+            invoiceData = [
+                { area: "Erbil To Baghdad", invoiceNo: "12888407", submissionDate: "29-Mar-26", daysOutstand: "8", company: "Mintroute", amount: "IQD 1,450,000,000", exchangeRate: "", bankStatus: "N/A", topUpStatus: "Not Received" },
+                { area: "Baghdad To Mintroute", invoiceNo: "2166", submissionDate: "23-Mar-26", daysOutstand: "14", company: "Mintroute", amount: "$ 1,052,705.00", exchangeRate: "IQD 1,320", bankStatus: "Final Approval", topUpStatus: "Not Received" }
+            ].map(row => { let newRow = {}; invoiceColumns.forEach(c => newRow[c.key] = row[c.key] || ""); return newRow; });
+        }
+        if (accountsData.length === 0) {
+            accountsData = [
+                { account: "LikeCard", invoiceNo: "INV-1001", balance: "$ 32,040.43", yesterdaySales: "$ 483.26" },
+                { account: "Mintroute", invoiceNo: "INV-1002", balance: "$ 832,474.70", yesterdaySales: "$ 65,772.75" },
+                { account: "OneCard", invoiceNo: "INV-1003", balance: "$ 100,000.00", yesterdaySales: "$ -" },
+                { account: "FIB:Mintroute", invoiceNo: "INV-1004", balance: "$ 814,388.37", yesterdaySales: "$ 55,033.17" }
+            ].map(row => { let newRow = {}; accountsColumns.forEach(c => newRow[c.key] = row[c.key] || ""); return newRow; });
+        }
+        if (fibData.length === 0) {
+            fibData = [
+                { invoiceNo: "T14", amount: "$1,000,000.00", remaining: "$500,000.00", status: "Remaining" },
+                { invoiceNo: "T15", amount: "$1,000,000.00", remaining: "$1,000,000.00", status: "Pending To Pay" }
+            ].map(row => { let newRow = {}; fibColumns.forEach(c => newRow[c.key] = row[c.key] || ""); return newRow; });
+        }
+        saveAllToStorage();
+    }
+
+    function saveColumnsToStorage() {
+        localStorage.setItem("dynamic_invoice_columns", JSON.stringify(invoiceColumns));
+        localStorage.setItem("dynamic_accounts_columns", JSON.stringify(accountsColumns));
+        localStorage.setItem("dynamic_fib_columns", JSON.stringify(fibColumns));
+    }
+    function saveDataToStorage() {
+        localStorage.setItem("invoice_editable_grid", JSON.stringify(invoiceData));
+        localStorage.setItem("accounts_table_data", JSON.stringify(accountsData));
+        localStorage.setItem("fib_balance_data", JSON.stringify(fibData));
+    }
+    function saveAllToStorage() { saveColumnsToStorage(); saveDataToStorage(); }
+
+    // Permission System
+    function loadPermissions() {
+        const stored = localStorage.getItem("finance_granular_permissions");
+        if (stored) { try { viewerPermissions = JSON.parse(stored); } catch(e) { viewerPermissions = {}; } } else { viewerPermissions = {}; }
+    }
+    function savePermissions() { localStorage.setItem("finance_granular_permissions", JSON.stringify(viewerPermissions)); }
+    function ensureViewerPermissions(email) {
+        if (!viewerPermissions[email]) {
+            viewerPermissions[email] = { invoice: getDefaultTablePerms(), accounts: getDefaultTablePerms(), fib: getDefaultTablePerms(), reports: getDefaultTablePerms() };
+            savePermissions();
+        } else if (!viewerPermissions[email].reports) {
+            // Migration: add reports permission to existing viewers
+            viewerPermissions[email].reports = getDefaultTablePerms();
+            savePermissions();
+        }
+    }
+    function updateTablePermission(email, table, action, value) {
+        if (!viewerPermissions[email]) viewerPermissions[email] = { invoice: getDefaultTablePerms(), accounts: getDefaultTablePerms(), fib: getDefaultTablePerms() };
+        if (!viewerPermissions[email][table]) viewerPermissions[email][table] = getDefaultTablePerms();
+        viewerPermissions[email][table][action] = value;
+        savePermissions();
+        logActivity(currentUserEmail, "Changed permission", `${email} - ${table}.${action}=${value}`);
+        if (currentUserEmail === email && userRole === 'viewer') renderFullApp();
+    }
+
+    // Activity Logging
+    function loadActivityLog() {
+        const stored = localStorage.getItem("finance_activity_log");
+        if (stored) { try { activityLog = JSON.parse(stored); if (!Array.isArray(activityLog)) activityLog = []; } catch(e) { activityLog = []; } }
+    }
+    function saveActivityLog() {
+        if (activityLog.length > MAX_LOG_ENTRIES) activityLog = activityLog.slice(-MAX_LOG_ENTRIES);
+        localStorage.setItem("finance_activity_log", JSON.stringify(activityLog));
+    }
+    function logActivity(userEmail, action, details = "") {
+        activityLog.push({ timestamp: new Date().toISOString(), userEmail, action, details });
+        saveActivityLog();
+        const container = document.getElementById("activityLogContainer");
+        if (container) renderActivityLog();
+    }
+    function renderActivityLog() {
+        const container = document.getElementById("activityLogContainer");
+        if (!container) return;
+        if (activityLog.length === 0) { container.innerHTML = '<div class="text-center text-slate-400 py-8 text-sm">No activity recorded</div>'; return; }
+        const reversed = [...activityLog].reverse();
+        container.innerHTML = reversed.map(entry => `
+            <div class="flex flex-col sm:flex-row gap-2 sm:gap-4 p-3 border-b border-slate-100 hover:bg-slate-50 text-xs sm:text-sm font-mono">
+                <span class="text-slate-500 w-36 shrink-0">${new Date(entry.timestamp).toLocaleString()}</span>
+                <span class="font-semibold text-blue-600 w-48 shrink-0 truncate">${escapeHtml(entry.userEmail)}</span>
+                <span class="text-slate-700"><strong>${escapeHtml(entry.action)}</strong> ${escapeHtml(entry.details)}</span>
+            </div>
+        `).join('');
+    }
+
+    // Snapshots & Reports
+    function loadSnapshots() {
+        const stored = localStorage.getItem("finance_daily_snapshots");
+        if (stored) { try { snapshots = JSON.parse(stored); } catch(e) { snapshots = {}; } } else { snapshots = {}; }
+    }
+    function saveSnapshots() { localStorage.setItem("finance_daily_snapshots", JSON.stringify(snapshots)); }
+    function saveCurrentSnapshot(date = null) {
+        const today = date || new Date().toISOString().split('T')[0];
+        snapshots[today] = {
+            date: today, timestamp: new Date().toISOString(),
+            invoiceColumns: JSON.parse(JSON.stringify(invoiceColumns)), accountsColumns: JSON.parse(JSON.stringify(accountsColumns)), fibColumns: JSON.parse(JSON.stringify(fibColumns)),
+            invoiceData: JSON.parse(JSON.stringify(invoiceData)), accountsData: JSON.parse(JSON.stringify(accountsData)), fibData: JSON.parse(JSON.stringify(fibData))
+        };
+        saveSnapshots();
+        logActivity(currentUserEmail, "Saved daily snapshot", `Date: ${today}`);
+        alert(`Snapshot saved for ${today}`);
+        populateReportDateSelect();
+    }
+    function populateReportDateSelect() {
+        const select = document.getElementById("reportDateSelect");
+        if (!select) return;
+        const dates = Object.keys(snapshots).sort().reverse();
+        select.innerHTML = '<option value="">Select a date...</option>' + dates.map(d => `<option value="${d}">${d}</option>`).join('');
+    }
+    function extractNumericAmount(str) { if (!str) return 0; const m = str.toString().match(/[\d,]+\.?\d*/); return m ? parseFloat(m[0].replace(/,/g, '')) : 0; }
+    function generateReportForDate(date) {
+        const s = snapshots[date];
+        if (!s) { alert("No snapshot for this date."); return; }
+        const reportDiv = document.getElementById("reportContent");
+        if (!reportDiv) return;
+        
+        let invTotalUSD = 0, invTotalIQD = 0;
+        s.invoiceData.forEach(row => { const amt = row.amount || ""; if (amt.includes("$")) invTotalUSD += extractNumericAmount(amt); else if (amt.includes("IQD")) invTotalIQD += extractNumericAmount(amt); });
+        let accTotalBalance = 0;
+        s.accountsData.forEach(row => { accTotalBalance += extractNumericAmount(row.balance); });
+        let fibTotalAmount = 0, fibTotalRemaining = 0;
+        s.fibData.forEach(row => { fibTotalAmount += extractNumericAmount(row.amount); fibTotalRemaining += extractNumericAmount(row.remaining); });
+
+        const renderTable = (data, cols) => `<div class="overflow-x-auto mt-4"><table class="w-full text-xs border-collapse"><thead><tr class="bg-slate-50">${cols.map(c => `<th class="border border-slate-200 p-2 font-semibold text-left">${escapeHtml(c.label)}</th>`).join('')}</tr></thead><tbody>${data.map(row => `<tr class="hover:bg-slate-50">${cols.map(c => `<td class="border border-slate-200 p-2">${escapeHtml(row[c.key] || '')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+        
+        reportDiv.innerHTML = `
+            <div class="bg-white rounded-xl border border-slate-200 p-6 mt-4 shadow-sm">
+                <h4 class="text-lg font-bold text-slate-800 mb-4">📊 Summary for ${date}</h4>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <div class="bg-blue-50 rounded-lg p-4 border border-blue-100"><div class="text-sm text-blue-600 font-medium">Invoice Grid</div><div class="text-2xl font-bold text-blue-900">${s.invoiceData.length} <span class="text-sm font-normal">rows</span></div><div class="text-xs text-blue-700 mt-1">USD: $${invTotalUSD.toLocaleString()} | IQD: ${invTotalIQD.toLocaleString()}</div></div>
+                    <div class="bg-emerald-50 rounded-lg p-4 border border-emerald-100"><div class="text-sm text-emerald-600 font-medium">Accounts Summary</div><div class="text-2xl font-bold text-emerald-900">${s.accountsData.length} <span class="text-sm font-normal">rows</span></div><div class="text-xs text-emerald-700 mt-1">Balance: $${accTotalBalance.toLocaleString()}</div></div>
+                    <div class="bg-amber-50 rounded-lg p-4 border border-amber-100"><div class="text-sm text-amber-600 font-medium">FIB Balance</div><div class="text-2xl font-bold text-amber-900">${s.fibData.length} <span class="text-sm font-normal">rows</span></div><div class="text-xs text-amber-700 mt-1">Amount: $${fibTotalAmount.toLocaleString()} | Rem: $${fibTotalRemaining.toLocaleString()}</div></div>
+                </div>
+                <div class="space-y-6">
+                    <div><h5 class="font-semibold text-slate-700 mb-2">📄 Invoice Master Grid</h5>${renderTable(s.invoiceData, s.invoiceColumns)}</div>
+                    <div><h5 class="font-semibold text-slate-700 mb-2">💰 Accounts Summary</h5>${renderTable(s.accountsData, s.accountsColumns)}</div>
+                    <div><h5 class="font-semibold text-slate-700 mb-2">🏦 FIB Balance</h5>${renderTable(s.fibData, s.fibColumns)}</div>
+                </div>
+            </div>`;
+        logActivity(currentUserEmail, "Generated report", date);
+    }
+    function downloadReportAsCSV() {
+        const dateSelect = document.getElementById("reportDateSelect");
+        const selectedDate = dateSelect ? dateSelect.value : null;
+        let snapshot = null;
+        if (selectedDate && snapshots[selectedDate]) { snapshot = snapshots[selectedDate]; }
+        else { snapshot = { invoiceColumns, accountsColumns, fibColumns, invoiceData, accountsData, fibData, date: new Date().toISOString().split('T')[0] }; }
+        
+        function arrayToCSV(data, cols) {
+            if (!data.length) return "";
+            const headers = cols.map(c => `"${c.label.replace(/"/g, '""')}"`).join(',');
+            const rows = data.map(row => cols.map(col => `"${String(row[col.key] !== undefined ? row[col.key] : "").replace(/"/g, '""')}"`).join(','));
+            return [headers, ...rows].join('\n');
+        }
+        const invCSV = arrayToCSV(snapshot.invoiceData, snapshot.invoiceColumns);
+        const accCSV = arrayToCSV(snapshot.accountsData, snapshot.accountsColumns);
+        const fibCSV = arrayToCSV(snapshot.fibData, snapshot.fibColumns);
+        let fullCSV = `"Report Date: ${snapshot.date}"\n\n"INVOICE MASTER GRID"\n${invCSV}\n\n"ACCOUNTS SUMMARY"\n${accCSV}\n\n"FIB BALANCE"\n${fibCSV}\n`;
+        
+        const blob = new Blob([fullCSV], { type: "text/csv;charset=utf-8;" });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.href = url;
+        link.setAttribute("download", `finance_report_${snapshot.date}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        logActivity(currentUserEmail, "Downloaded report as CSV", `Date: ${snapshot.date}`);
+        alert("Report downloaded as CSV file.");
+    }
+
+    // Authentication
+    function loadUserAccounts() {
+        const stored = localStorage.getItem("finance_users_with_passwords");
+        if (stored) { try { userAccounts = JSON.parse(stored); if (!Array.isArray(userAccounts)) userAccounts = []; } catch(e) { userAccounts = []; } }
+        const adminExists = userAccounts.some(u => u.email.toLowerCase() === ADMIN_EMAIL.toLowerCase());
+        if (!adminExists) userAccounts.push({ email: ADMIN_EMAIL, role: "admin", passwordHash: simpleHash(DEFAULT_ADMIN_PW), securityQuestion: "What is your city of birth?", securityAnswerHash: simpleHash("default") });
+        else { const idx = userAccounts.findIndex(u => u.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()); if (idx !== -1) { userAccounts[idx].role = "admin"; if (!userAccounts[idx].securityQuestion) { userAccounts[idx].securityQuestion = "What is your city of birth?"; userAccounts[idx].securityAnswerHash = simpleHash("default"); } } }
+        saveUserAccounts();
+        loadPermissions();
+        userAccounts.forEach(acc => { if (acc.role === 'viewer') ensureViewerPermissions(acc.email); });
+        saveUserAccounts();
+    }
+    function saveUserAccounts() { localStorage.setItem("finance_users_with_passwords", JSON.stringify(userAccounts)); }
+    function addViewerWithPassword(email, plainPassword) {
+        if (!email || !plainPassword) return false;
+        if (userAccounts.some(u => u.email.toLowerCase() === email.toLowerCase())) return false;
+        if (email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) return false;
+        userAccounts.push({ email, role: "viewer", passwordHash: simpleHash(plainPassword), securityQuestion: "What is your city of birth?", securityAnswerHash: simpleHash("default") });
+        saveUserAccounts();
+        ensureViewerPermissions(email);
+        logActivity(currentUserEmail, "Added viewer", email);
+        return true;
+    }
+    function removeViewer(email) {
+        if (email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) return false;
+        userAccounts = userAccounts.filter(u => u.email.toLowerCase() !== email.toLowerCase());
+        saveUserAccounts();
+        delete viewerPermissions[email];
+        savePermissions();
+        logActivity(currentUserEmail, "Removed viewer", email);
+        return true;
+    }
+    function validateLogin(email, password) {
+        const user = userAccounts.find(u => u.email.toLowerCase() === email.toLowerCase());
+        if (!user) return false;
+        if (simpleHash(password) === user.passwordHash) return { role: user.role, email: user.email };
+        return false;
+    }
+    function getUserByEmail(email) { return userAccounts.find(u => u.email.toLowerCase() === email.toLowerCase()); }
+    function resetPasswordWithSecurity(email, answer, newPassword) {
+        const user = getUserByEmail(email);
+        if (!user) return { success: false, message: "Email not found." };
+        if (simpleHash(answer.trim().toLowerCase()) !== user.securityAnswerHash) return { success: false, message: "Incorrect security answer." };
+        user.passwordHash = simpleHash(newPassword);
+        saveUserAccounts();
+        logActivity(email, "Reset password via security question", "");
+        return { success: true, message: "Password reset successfully." };
+    }
+    function adminResetPassword(email, newPassword) {
+        const user = getUserByEmail(email);
+        if (!user) return false;
+        user.passwordHash = simpleHash(newPassword);
+        saveUserAccounts();
+        logActivity(currentUserEmail, "Admin reset password", email);
+        return true;
+    }
+    function saveRememberedEmail(email) { if (email) localStorage.setItem("finance_remember_email", email); else localStorage.removeItem("finance_remember_email"); }
+    function getRememberedEmail() { return localStorage.getItem("finance_remember_email"); }
+    function clearRememberedEmail() { localStorage.removeItem("finance_remember_email"); }
+
+    // Column Management
+    function addColumnToTable(tableName, columnLabel) {
+        if (!columnLabel || columnLabel.trim() === "") return false;
+        const key = "col_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5);
+        const newCol = { key: key, label: columnLabel.trim() };
+        if (tableName === 'invoice') { invoiceColumns.push(newCol); invoiceData.forEach(row => row[key] = ""); }
+        else if (tableName === 'accounts') { accountsColumns.push(newCol); accountsData.forEach(row => row[key] = ""); }
+        else if (tableName === 'fib') { fibColumns.push(newCol); fibData.forEach(row => row[key] = ""); }
+        saveAllToStorage();
+        logActivity(currentUserEmail, `Added column to ${tableName}`, columnLabel);
+        return true;
+    }
+    function removeColumnFromTable(tableName, colKey) {
+        let columns, data;
+        if (tableName === 'invoice') { columns = invoiceColumns; data = invoiceData; }
+        else if (tableName === 'accounts') { columns = accountsColumns; data = accountsData; }
+        else { columns = fibColumns; data = fibData; }
+        const idx = columns.findIndex(c => c.key === colKey);
+        if (idx === -1) return false;
+        columns.splice(idx, 1);
+        data.forEach(row => delete row[colKey]);
+        saveAllToStorage();
+        logActivity(currentUserEmail, `Removed column from ${tableName}`, colKey);
+        return true;
+    }
+
+    // Table Rendering
+    function renderDynamicTable(tbodyId, tableData, columns, isAdmin, tableName, perms) {
+        const tbody = document.getElementById(tbodyId);
+        if (!tbody) return;
+        tbody.innerHTML = "";
+        const canEdit = perms.edit;
+        const canDeleteRow = perms.deleteRow;
+        
+        tableData.forEach((row, idx) => {
+            const tr = document.createElement("tr");
+            tr.className = "hover:bg-slate-50 transition-colors";
+            columns.forEach(col => {
+                const td = document.createElement("td");
+                td.className = "border-b border-slate-100 p-2";
+                const input = document.createElement("input");
+                input.type = "text";
+                input.className = "table-cell-input w-full";
+                input.value = row[col.key] ?? "";
+                input.disabled = !(isAdmin || canEdit);
+                if (!input.disabled) {
+                    input.addEventListener("input", (e) => { row[col.key] = e.target.value; saveDataToStorage(); });
+                }
+                td.appendChild(input);
+                tr.appendChild(td);
+            });
+            const actionTd = document.createElement("td");
+            actionTd.className = "action-column border-b border-slate-100 p-2 text-center w-16";
+            const delBtn = document.createElement("button");
+            delBtn.innerHTML = '<i data-lucide="trash-2" class="w-4 h-4"></i>';
+            delBtn.className = "p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed";
+            delBtn.disabled = !(isAdmin || canDeleteRow);
+            if (!delBtn.disabled) {
+                delBtn.addEventListener("click", () => {
+                    if (tableData.length === 1) { alert("Cannot delete last row."); return; }
+                    if (confirm(`Delete row #${idx+1}?`)) {
+                        tableData.splice(idx, 1);
+                        saveDataToStorage();
+                        renderDynamicTable(tbodyId, tableData, columns, isAdmin, tableName, perms);
+                        logActivity(currentUserEmail, `Deleted row in ${tableName}`, `Row ${idx}`);
+                    }
+                });
+            }
+            actionTd.appendChild(delBtn);
+            tr.appendChild(actionTd);
+            tbody.appendChild(tr);
+        });
+        lucide.createIcons();
+    }
+
+    // Main Render
+    function renderFullApp() {
+        const root = document.getElementById("appRoot");
+        if (!root) return;
+        if (!currentUserEmail || !userRole) {
+            const remembered = getRememberedEmail() || "";
+            root.innerHTML = `
+                <div class="flex items-center justify-center min-h-screen p-4">
+                    <div class="glass-panel w-full max-w-md rounded-2xl shadow-2xl p-8 border border-white/50">
+                        <div class="text-center mb-8">
+                            <div class="w-16 h-16 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl mx-auto mb-4 flex items-center justify-center shadow-lg"><i data-lucide="shield-check" class="w-8 h-8 text-white"></i></div>
+                            <h2 class="text-2xl font-bold gradient-text">Finance Vault</h2>
+                            <p class="text-slate-500 text-sm mt-1">Secure Dashboard Access</p>
+                        </div>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1 uppercase tracking-wider">Email</label>
+                                <input type="email" id="loginEmail" placeholder="work@email.com" value="${escapeHtml(remembered)}" class="input-modern w-full px-4 py-3 rounded-xl bg-white/80">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-600 mb-1 uppercase tracking-wider">Password</label>
+                                <input type="password" id="loginPassword" placeholder="••••••••" class="input-modern w-full px-4 py-3 rounded-xl bg-white/80">
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" id="rememberCheckbox" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500">
+                                <label for="rememberCheckbox" class="text-sm text-slate-600">Remember email</label>
+                            </div>
+                            <button id="submitLoginBtn" class="btn-hover w-full bg-gradient-to-r from-blue-600 to-indigo-700 text-white font-semibold py-3 rounded-xl shadow-lg shadow-blue-200 mt-2">Sign In</button>
+                            <button id="forgotPwdBtn" class="w-full text-slate-500 text-sm py-2 hover:text-blue-600 transition-colors">Forgot Password?</button>
+                            <div id="loginError" class="text-red-500 text-sm text-center hidden bg-red-50 p-2 rounded-lg"></div>
+                        </div>
+                    </div>
+                </div>`;
+            lucide.createIcons();
+            const submit = () => {
+                const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+                const pwd = document.getElementById('loginPassword').value;
+                const auth = validateLogin(email, pwd);
+                if (!auth) { document.getElementById('loginError').classList.remove('hidden'); document.getElementById('loginError').innerText = 'Invalid credentials.'; return; }
+                if (document.getElementById('rememberCheckbox').checked) saveRememberedEmail(email); else clearRememberedEmail();
+                currentUserEmail = auth.email; userRole = auth.role;
+                logActivity(currentUserEmail, "Logged in", "");
+                renderFullApp();
+            };
+            document.getElementById('submitLoginBtn').onclick = submit;
+            document.getElementById('forgotPwdBtn').onclick = showForgotPasswordModal;
+            return;
+        }
+
+        const isAdmin = (userRole === "admin");
+        const isViewer = (userRole === "viewer");
+        let viewerPerms = null;
+        if (isViewer) { ensureViewerPermissions(currentUserEmail); viewerPerms = viewerPermissions[currentUserEmail]; }
+        
+        const renderHeaders = (columns, tableName, perms) => {
+            const canDeleteCol = isAdmin || (perms && perms.deleteColumn);
+            return columns.map(col => {
+                if (!col || !col.key) return '';
+                // Escape quotes for HTML data attributes
+                const safeTableName = String(tableName || '').replace(/"/g, "&quot;");
+                const safeColKey = String(col.key || '').replace(/"/g, "&quot;");
+                return `
+                <th class="bg-slate-50 border-b border-slate-200 p-3 text-left text-xs font-semibold text-slate-600 whitespace-nowrap">
+                    <div class="flex items-center gap-2 group">
+                        ${escapeHtml(col.label || 'Unnamed')}
+                        ${canDeleteCol ? `<button onclick="removeCol(this)" data-table="${safeTableName}" data-colkey="${safeColKey}" class="text-slate-400 hover:text-red-500 p-1 hover:bg-red-50 rounded transition-colors opacity-0 group-hover:opacity-100" title="Remove column"><i data-lucide="x" class="w-3 h-3"></i></button>` : ''}
+                    </div>
+                </th>`;
+            }).join('');
+        };
+
+        let invPerms = isAdmin ? null : (viewerPerms?.invoice || getDefaultTablePerms());
+        let accPerms = isAdmin ? null : (viewerPerms?.accounts || getDefaultTablePerms());
+        let fibPerms = isAdmin ? null : (viewerPerms?.fib || getDefaultTablePerms());
+
+        const sectionsHtml = [];
+        if (isAdmin || invPerms.view) sectionsHtml.push(`
+            <div class="section-card bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-6">
+                <div class="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex flex-wrap justify-between items-center gap-4">
+                    <div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600"><i data-lucide="file-text" class="w-5 h-5"></i></div><h3 class="font-bold text-slate-800 text-lg">Invoice Master Grid</h3></div>
+                    <div class="flex gap-2 no-print" id="invoice-actions-container"></div>
+                </div>
+                <div class="overflow-x-auto p-4 scrollbar-thin"><table class="w-full min-w-[800px]"><thead><tr>${renderHeaders(invoiceColumns, 'invoice', invPerms)}<th class="action-column bg-slate-50 border-b border-slate-200 p-3 w-16"></th></tr></thead><tbody id="invoice-tbody"></tbody></table></div>
+            </div>`);
+        
+        if (isAdmin || accPerms.view) sectionsHtml.push(`
+            <div class="section-card bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-6">
+                <div class="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex flex-wrap justify-between items-center gap-4">
+                    <div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-600"><i data-lucide="wallet" class="w-5 h-5"></i></div><h3 class="font-bold text-slate-800 text-lg">Accounts Summary</h3></div>
+                    <div class="flex gap-2 no-print" id="accounts-actions-container"></div>
+                </div>
+                <div class="overflow-x-auto p-4 scrollbar-thin"><table class="w-full min-w-[600px]"><thead><tr>${renderHeaders(accountsColumns, 'accounts', accPerms)}<th class="action-column bg-slate-50 border-b border-slate-200 p-3 w-16"></th></tr></thead><tbody id="accounts-tbody"></tbody></table></div>
+            </div>`);
+        
+        if (isAdmin || fibPerms.view) sectionsHtml.push(`
+            <div class="section-card bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-6">
+                <div class="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex flex-wrap justify-between items-center gap-4">
+                    <div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center text-amber-600"><i data-lucide="landmark" class="w-5 h-5"></i></div><h3 class="font-bold text-slate-800 text-lg">FIB Balance</h3></div>
+                    <div class="flex gap-2 no-print" id="fib-actions-container"></div>
+                </div>
+                <div class="overflow-x-auto p-4 scrollbar-thin"><table class="w-full min-w-[500px]"><thead><tr>${renderHeaders(fibColumns, 'fib', fibPerms)}<th class="action-column bg-slate-50 border-b border-slate-200 p-3 w-16"></th></tr></thead><tbody id="fib-tbody"></tbody></table></div>
+            </div>`);
+        
+        // Daily Reports & Snapshots - available to admin and viewers with reports permission
+        const reportsPerms = isAdmin ? null : (viewerPerms?.reports || getDefaultTablePerms());
+        if (isAdmin || reportsPerms?.view) sectionsHtml.push(`
+            <div class="section-card bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-6">
+                <div class="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-white flex flex-wrap justify-between items-center gap-4">
+                    <div class="flex items-center gap-3"><div class="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600"><i data-lucide="bar-chart-3" class="w-5 h-5"></i></div><h3 class="font-bold text-slate-800 text-lg">Daily Reports & Snapshots</h3></div>
+                </div>
+                <div class="p-6 space-y-4">
+                    <div class="flex flex-wrap gap-2">
+                        ${isAdmin ? `<button id="saveSnapshotBtn" class="btn-hover px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium flex items-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> Save Snapshot</button>` : ''}
+                        <select id="reportDateSelect" class="input-modern px-3 py-2 rounded-lg text-sm bg-white min-w-[150px]">
+                            <option value="">Select a date...</option>
+                        </select>
+                        <button id="generateReportBtn" class="btn-hover px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium flex items-center gap-2"><i data-lucide="file-text" class="w-4 h-4"></i> Generate</button>
+                        <button id="downloadCsvBtn" class="btn-hover px-4 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg text-sm font-medium flex items-center gap-2"><i data-lucide="download" class="w-4 h-4"></i> CSV</button>
+                    </div>
+                    <div id="reportContent" class="mt-4"></div>
+                </div>
+            </div>`);
+
+        root.innerHTML = `
+            <div class="print-container glass-panel rounded-3xl shadow-xl border border-white/60 overflow-hidden min-h-[800px]">
+                <div class="bg-white border-b border-slate-200 px-6 py-4 flex flex-wrap justify-between items-center gap-4 no-print">
+                    <div class="flex items-center gap-4">
+                        <div class="flex items-center gap-3 bg-slate-100 px-4 py-2 rounded-full">
+                            <i data-lucide="user" class="w-4 h-4 text-slate-500"></i>
+                            <span class="font-semibold text-slate-700 text-sm">${escapeHtml(currentUserEmail)}</span>
+                            <span class="px-2 py-1 rounded-full text-xs font-bold ${isAdmin ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}">${isAdmin ? 'ADMIN' : 'VIEWER'}</span>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="adminPanelBtn" class="btn-hover flex items-center gap-2 px-4 py-2 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg text-sm font-medium transition-colors"><i data-lucide="settings" class="w-4 h-4"></i> Admin Panel</button>
+                        <button id="printBtn" class="btn-hover flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors"><i data-lucide="printer" class="w-4 h-4"></i> Print</button>
+                        <button id="logoutBtn" class="btn-hover flex items-center gap-2 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-sm font-medium transition-colors"><i data-lucide="log-out" class="w-4 h-4"></i> Logout</button>
+                    </div>
+                </div>
+
+                ${isAdmin ? `
+                <div id="adminModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden overflow-y-auto">
+                    <div class="min-h-screen px-4 py-8 flex justify-center">
+                        <div class="bg-amber-50 rounded-2xl shadow-2xl border border-amber-200 w-full max-w-[1400px] overflow-hidden">
+                            <div class="sticky top-0 bg-amber-50 border-b border-amber-200 p-4 flex justify-between items-center z-10">
+                                <div class="flex items-center gap-2 text-amber-800 font-bold text-lg">
+                                    <i data-lucide="settings" class="w-6 h-6"></i> Administration Panel
+                                </div>
+                                <button id="closeAdminModal" class="btn-hover flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 rounded-lg text-sm font-medium border border-slate-200 shadow-sm">
+                                    <i data-lucide="x" class="w-4 h-4"></i> Close
+                                </button>
+                            </div>
+                            
+                            <div class="p-6 space-y-6">
+                                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                    <div class="bg-white rounded-xl p-4 border border-amber-200 shadow-sm">
+                                        <h4 class="font-semibold text-slate-800 mb-3 text-sm uppercase tracking-wider">Add New Viewer</h4>
+                                        <div class="flex flex-wrap gap-2">
+                                            <input type="email" id="newViewerEmail" placeholder="colleague@company.com" class="input-modern flex-1 min-w-[200px] px-3 py-2 rounded-lg text-sm">
+                                            <input type="password" id="newViewerPassword" placeholder="Password" class="input-modern flex-1 min-w-[120px] px-3 py-2 rounded-lg text-sm">
+                                            <button id="addViewerBtn" class="btn-hover px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium whitespace-nowrap">Add Viewer</button>
+                                        </div>
+                                        <div id="viewerListContainer" class="flex flex-wrap gap-2 mt-3"></div>
+                                    </div>
+
+                                    <!-- Daily Reports moved to home page dashboard -->
+                                </div>
+
+                                <div class="bg-white rounded-xl p-4 border border-amber-200 shadow-sm overflow-x-auto">
+                                    <h4 class="font-semibold text-slate-800 mb-3 text-sm uppercase tracking-wider">Permission Matrix</h4>
+                                    <table class="w-full text-xs border-collapse min-w-[800px]">
+                                        <thead><tr class="bg-slate-50"><th class="border border-slate-200 p-2 text-left font-semibold">Viewer</th><th class="border border-slate-200 p-2 text-left font-semibold">Table</th><th class="border border-slate-200 p-2 text-center font-semibold">View</th><th class="border border-slate-200 p-2 text-center font-semibold">Edit</th><th class="border border-slate-200 p-2 text-center font-semibold">Add Row</th><th class="border border-slate-200 p-2 text-center font-semibold">Delete Row</th><th class="border border-slate-200 p-2 text-center font-semibold">Add Col</th><th class="border border-slate-200 p-2 text-center font-semibold">Delete Col</th></tr></thead>
+                                        <tbody id="permTableBody"></tbody>
+                                    </table>
+                                </div>
+
+                                <div class="bg-white rounded-xl border border-amber-200 shadow-sm">
+                                    <div class="flex justify-between items-center p-4 border-b border-slate-100">
+                                        <h4 class="font-semibold text-slate-800 text-sm uppercase tracking-wider">Activity Log</h4>
+                                        <button id="clearLogBtn" class="text-xs text-red-600 hover:bg-red-50 px-3 py-1 rounded-lg transition-colors">Clear Log</button>
+                                    </div>
+                                    <div id="activityLogContainer" class="max-h-80 overflow-y-auto scrollbar-thin"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>` : ''}
+
+                <div class="p-6">${sectionsHtml.join('')}</div>
+
+                <div class="bg-slate-50 border-t border-slate-200 px-6 py-3 text-xs text-slate-500 flex justify-between no-print">
+                    <span>${isAdmin ? 'Administrator Access: Full Control' : 'Viewer Access: Limited by permissions'}</span>
+                    <span>Data persisted locally</span>
+                </div>
+            </div>`;
+
+        const refreshTables = () => {
+            if (document.getElementById("invoice-tbody")) renderDynamicTable("invoice-tbody", invoiceData, invoiceColumns, isAdmin, "Invoice", invPerms || { edit: false, deleteRow: false });
+            if (document.getElementById("accounts-tbody")) renderDynamicTable("accounts-tbody", accountsData, accountsColumns, isAdmin, "Accounts", accPerms || { edit: false, deleteRow: false });
+            if (document.getElementById("fib-tbody")) renderDynamicTable("fib-tbody", fibData, fibColumns, isAdmin, "FIB", fibPerms || { edit: false, deleteRow: false });
+        };
+        refreshTables();
+
+        // Admin Modal Event Listeners
+        const adminModal = document.getElementById("adminModal");
+        const adminPanelBtn = document.getElementById("adminPanelBtn");
+        const closeAdminModal = document.getElementById("closeAdminModal");
+        
+        if (adminPanelBtn && adminModal) {
+            adminPanelBtn.addEventListener("click", () => {
+                adminModal.classList.remove("hidden");
+                document.body.style.overflow = "hidden";
+                lucide.createIcons();
+            });
+        }
+        
+        if (closeAdminModal && adminModal) {
+            closeAdminModal.addEventListener("click", () => {
+                adminModal.classList.add("hidden");
+                document.body.style.overflow = "";
+            });
+        }
+        
+        // Close modal when clicking outside
+        if (adminModal) {
+            adminModal.addEventListener("click", (e) => {
+                if (e.target === adminModal) {
+                    adminModal.classList.add("hidden");
+                    document.body.style.overflow = "";
+                }
+            });
+        }
+
+        // Setup Daily Reports section for both admin and viewers with permission
+        const setupReportSection = () => {
+            populateReportDateSelect();
+            const saveBtn = document.getElementById("saveSnapshotBtn");
+            const genBtn = document.getElementById("generateReportBtn");
+            const dlBtn = document.getElementById("downloadCsvBtn");
+            
+            if (saveBtn) saveBtn.addEventListener("click", () => saveCurrentSnapshot());
+            if (genBtn) genBtn.addEventListener("click", () => { 
+                const d = document.getElementById("reportDateSelect")?.value; 
+                if(d) generateReportForDate(d); 
+                else alert("Select a date first."); 
+            });
+            if (dlBtn) dlBtn.addEventListener("click", downloadReportAsCSV);
+        };
+        setupReportSection();
+
+        if (isAdmin) {
+            const buildActionButtons = (addRowPerm, addColPerm, tableName) => {
+                let btns = '';
+                if (addRowPerm) btns += `<button class="btn-hover flex items-center gap-1 px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg text-xs font-medium" onclick="addRow('${tableName}')"><i data-lucide="plus" class="w-3 h-3"></i> Row</button>`;
+                if (addColPerm) btns += `<button class="btn-hover flex items-center gap-1 px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg text-xs font-medium" onclick="addColPrompt('${tableName}')"><i data-lucide="columns" class="w-3 h-3"></i> Column</button>`;
+                return btns + `<button class="btn-hover flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium" onclick="resetTable('${tableName}')"><i data-lucide="refresh-cw" class="w-3 h-3"></i> Reset</button>`;
+            };
+            
+            const invDiv = document.getElementById("invoice-actions-container");
+            if (invDiv) { invDiv.innerHTML = buildActionButtons(true, true, 'invoice'); }
+            const accDiv = document.getElementById("accounts-actions-container");
+            if (accDiv) { accDiv.innerHTML = buildActionButtons(true, true, 'accounts'); }
+            const fibDiv = document.getElementById("fib-actions-container");
+            if (fibDiv) { fibDiv.innerHTML = buildActionButtons(true, true, 'fib'); }
+
+            const refreshPermTable = () => {
+                const viewers = userAccounts.filter(u => u.role === "viewer");
+                const container = document.getElementById("viewerListContainer");
+                if (container) {
+                    container.innerHTML = viewers.length ? viewers.map(v => `
+                        <div class="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-full text-xs border border-slate-200">
+                            <span class="font-medium text-slate-700">${escapeHtml(v.email)}</span>
+                            <button onclick="removeViewerPrompt('${escapeHtml(v.email)}')" class="text-slate-400 hover:text-red-600 hover:bg-red-50 p-1 rounded-full transition-colors"><i data-lucide="x" class="w-3 h-3"></i></button>
+                        </div>
+                    `).join('') : '<span class="text-slate-400 text-xs italic">No viewers added</span>';
+                }
+                const tbody = document.getElementById("permTableBody");
+                if (tbody) {
+                    tbody.innerHTML = "";
+                    const tables = ['invoice', 'accounts', 'fib', 'reports'];
+                    for (let viewer of viewers) {
+                        ensureViewerPermissions(viewer.email);
+                        const perms = viewerPermissions[viewer.email];
+                        for (let tbl of tables) {
+                            const p = perms[tbl] || getDefaultTablePerms();
+                            const row = tbody.insertRow();
+                            if (tbl === 'invoice') row.insertCell(0).innerHTML = `<strong class="text-slate-700">${escapeHtml(viewer.email)}</strong>`;
+                            else row.insertCell(0).innerHTML = '';
+                            row.insertCell(1).innerHTML = `<span class="capitalize font-medium text-slate-600">${tbl}</span>`;
+                            ['view', 'edit', 'addRow', 'deleteRow', 'addColumn', 'deleteColumn'].forEach(action => {
+                                const cell = row.insertCell();
+                                cell.className = "border border-slate-200 p-2 text-center";
+                                const chk = document.createElement("input");
+                                chk.type = "checkbox";
+                                chk.checked = p[action];
+                                chk.className = "w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer";
+                                chk.addEventListener("change", (e) => updateTablePermission(viewer.email, tbl, action, e.target.checked));
+                                cell.appendChild(chk);
+                            });
+                        }
+                    }
+                }
+                lucide.createIcons();
+            };
+            refreshPermTable();
+
+            document.getElementById("addViewerBtn")?.addEventListener("click", () => {
+                const email = document.getElementById("newViewerEmail")?.value.trim().toLowerCase();
+                const pwd = document.getElementById("newViewerPassword")?.value;
+                if (email && pwd && addViewerWithPassword(email, pwd)) {
+                    document.getElementById("newViewerEmail").value = ""; document.getElementById("newViewerPassword").value = "";
+                    refreshPermTable();
+                    alert(`Viewer ${email} added successfully.`);
+                } else alert("Invalid email or duplicate.");
+            });
+
+            renderActivityLog();
+            document.getElementById("clearLogBtn")?.addEventListener("click", () => { if(confirm("Clear all logs?")){ activityLog=[]; saveActivityLog(); renderActivityLog(); logActivity(currentUserEmail,"Cleared activity log",""); } });
+        }
+
+        document.getElementById("logoutBtn")?.addEventListener("click", () => { logActivity(currentUserEmail,"Logged out",""); currentUserEmail=null; userRole=null; clearRememberedEmail(); renderFullApp(); });
+        document.getElementById("printBtn")?.addEventListener("click", () => { logActivity(currentUserEmail,"Printed dashboard",""); window.print(); });
+        lucide.createIcons();
+    }
+
+    // Global functions for inline onclick handlers
+    window.removeCol = (btn) => { 
+        const tableName = btn.dataset.table;
+        const colKey = btn.dataset.colkey;
+        console.log('removeCol called with:', tableName, colKey);
+        if (!tableName || !colKey || colKey === 'undefined' || colKey === 'null' || colKey === "null" || colKey === "undefined" || colKey === '') {
+            alert('Error: Invalid column identifier. Please refresh the page and try again.');
+            return;
+        }
+        if(confirm("Remove this column?")) { 
+            removeColumnFromTable(tableName, colKey); 
+            renderFullApp(); 
+        } 
+    };
+    window.addRow = (tableName) => {
+        if (tableName === 'invoice') { const newRow = {}; invoiceColumns.forEach(c => newRow[c.key] = ""); invoiceData.push(newRow); saveDataToStorage(); logActivity(currentUserEmail,"Added invoice row",""); renderDynamicTable("invoice-tbody", invoiceData, invoiceColumns, true, "Invoice", {edit:true, deleteRow:true}); }
+        else if (tableName === 'accounts') { const newRow = {}; accountsColumns.forEach(c => newRow[c.key] = ""); accountsData.push(newRow); saveDataToStorage(); logActivity(currentUserEmail,"Added accounts row",""); renderDynamicTable("accounts-tbody", accountsData, accountsColumns, true, "Accounts", {edit:true, deleteRow:true}); }
+        else if (tableName === 'fib') { const newRow = {}; fibColumns.forEach(c => newRow[c.key] = ""); fibData.push(newRow); saveDataToStorage(); logActivity(currentUserEmail,"Added FIB row",""); renderDynamicTable("fib-tbody", fibData, fibColumns, true, "FIB", {edit:true, deleteRow:true}); }
+        lucide.createIcons();
+    };
+    window.addColPrompt = (tableName) => { const name = prompt("New column name:"); if(name) { addColumnToTable(tableName, name); renderFullApp(); } };
+    window.resetTable = (tableName) => {
+        if(!confirm(`Reset ${tableName} table to defaults?`)) return;
+        if(tableName === 'invoice') { invoiceColumns = JSON.parse(JSON.stringify(DEFAULT_INVOICE_COLUMNS)); invoiceData = []; }
+        else if(tableName === 'accounts') { accountsColumns = JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS_COLUMNS)); accountsData = []; }
+        else if(tableName === 'fib') { fibColumns = JSON.parse(JSON.stringify(DEFAULT_FIB_COLUMNS)); fibData = []; }
+        saveAllToStorage(); loadColumnsAndData(); renderFullApp(); logActivity(currentUserEmail,`Reset ${tableName}`,"");
+    };
+    window.removeViewerPrompt = (email) => { if(confirm(`Remove ${email}?`)) { removeViewer(email); if(currentUserEmail===email) { currentUserEmail=null; userRole=null; clearRememberedEmail(); } renderFullApp(); } };
+
+    function showForgotPasswordModal() {
+        const modalDiv = document.createElement('div');
+        modalDiv.className = 'fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4';
+        modalDiv.innerHTML = `
+            <div class="glass-panel w-full max-w-md rounded-2xl shadow-2xl p-6 border border-white/50 animate-in fade-in zoom-in duration-200">
+                <h2 class="text-xl font-bold gradient-text mb-4 flex items-center gap-2"><i data-lucide="key" class="w-5 h-5"></i> Reset Password</h2>
+                <div class="space-y-4">
+                    <div><input type="email" id="resetEmail" placeholder="Enter your email" class="input-modern w-full px-4 py-3 rounded-xl bg-white/80"></div>
+                    <div id="secArea" style="display:none;" class="space-y-4">
+                        <div id="secQuestionDisplay" class="p-3 bg-amber-50 rounded-lg text-sm text-amber-800 border border-amber-200"></div>
+                        <input type="text" id="secAnswer" placeholder="Security answer" class="input-modern w-full px-4 py-3 rounded-xl bg-white/80">
+                        <input type="password" id="newPwd" placeholder="New password" class="input-modern w-full px-4 py-3 rounded-xl bg-white/80">
+                        <input type="password" id="confirmPwd" placeholder="Confirm password" class="input-modern w-full px-4 py-3 rounded-xl bg-white/80">
+                    </div>
+                    <div id="msg" class="text-sm text-slate-600"></div>
+                    <div class="flex gap-2">
+                        <button id="nextBtn" class="btn-hover flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl">Next</button>
+                        <button id="cancelBtn" class="btn-hover flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold py-3 rounded-xl">Cancel</button>
+                    </div>
+                </div>
+            </div>`;
+        document.body.appendChild(modalDiv);
+        lucide.createIcons();
+        let step = 1, email = '', question = '';
+        const next = document.getElementById('nextBtn'), cancel = document.getElementById('cancelBtn');
+        const update = () => {
+            if (step === 1) { document.getElementById('secArea').style.display = 'none'; document.getElementById('msg').innerText = 'Enter your email to begin.'; next.innerText = 'Next'; }
+            else { document.getElementById('secArea').style.display = 'block'; document.getElementById('secQuestionDisplay').innerText = question; document.getElementById('msg').innerText = 'Answer your security question.'; next.innerText = 'Reset'; }
+        };
+        const flow = () => {
+            if (step === 1) {
+                const em = document.getElementById('resetEmail').value.trim().toLowerCase();
+                const user = getUserByEmail(em);
+                if (!user) { alert('Email not found.'); return; }
+                email = em; question = user.securityQuestion || "What is your city of birth?";
+                step = 2; update();
+            } else {
+                const ans = document.getElementById('secAnswer').value.trim().toLowerCase();
+                const np = document.getElementById('newPwd').value;
+                const cp = document.getElementById('confirmPwd').value;
+                if (!ans || !np || !cp) { alert('Fill all fields.'); return; }
+                if (np !== cp) { alert('Passwords do not match.'); return; }
+                if (np.length < 4) { alert('Minimum 4 characters.'); return; }
+                const res = resetPasswordWithSecurity(email, ans, np);
+                alert(res.message);
+                if (res.success) modalDiv.remove();
+            }
+        };
+        next.onclick = flow; cancel.onclick = () => modalDiv.remove();
+        update();
+    }
+
+    function logout() { if (currentUserEmail) logActivity(currentUserEmail,"Logged out",""); currentUserEmail=null; userRole=null; clearRememberedEmail(); renderFullApp(); }
+    function bootstrap() { loadActivityLog(); loadUserAccounts(); loadColumnsAndData(); loadSnapshots(); renderFullApp(); }
+    bootstrap();
+</script>
+<script src="https://deepsite.hf.co/deepsite-badge.js"></script>
+</body>
+</html>
