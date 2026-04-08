@@ -3,12 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>Finance Vault · Firebase Edition</title>
+    <title>Finance Vault · Firebase Auth</title>
     <!-- Firebase SDKs -->
     <script type="module">
-        // Firebase configuration – YOUR ACTUAL CONFIG
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getDatabase, ref, set, get, update, push, child, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import { 
+            getAuth, 
+            signInWithEmailAndPassword, 
+            createUserWithEmailAndPassword, 
+            signOut, 
+            sendPasswordResetEmail,
+            onAuthStateChanged 
+        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCTEwQr-6z4y8JhkDPsjd6k0M-7J8cdnCg",
@@ -22,9 +29,10 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
+        const auth = getAuth(app);
 
-        // Make db globally available for non-module code
         window.db = db;
+        window.auth = auth;
         window.firebaseRef = ref;
         window.firebaseSet = set;
         window.firebaseGet = get;
@@ -33,10 +41,10 @@
         window.firebaseChild = child;
         window.firebaseOnValue = onValue;
 
-        // Dispatch event when Firebase is ready
         window.dispatchEvent(new Event('firebase-ready'));
     </script>
     <style>
+        /* ... Keep all existing styles exactly as before ... */
         * { box-sizing: border-box; }
         body { background: #eef2f7; font-family: 'Inter', system-ui, sans-serif; margin: 0; padding: 20px; color: #1a2c3e; }
         .app-container { max-width: 1600px; margin: 0 auto; background: white; border-radius: 28px; box-shadow: 0 20px 35px -12px rgba(0,0,0,0.1); overflow: hidden; }
@@ -104,18 +112,22 @@
             .cell-input { -webkit-appearance: none; appearance: none; color: black; }
         }
         .loading-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.9); display:flex; align-items:center; justify-content:center; z-index:9999; }
+        .error-message { color: #bc3f2e; font-size: 0.8rem; margin-top: 4px; }
+        .tab-container { display: flex; gap: 8px; margin-bottom: 16px; }
+        .tab-btn { background: none; border: none; padding: 8px 16px; cursor: pointer; border-bottom: 2px solid transparent; }
+        .tab-btn.active { border-bottom-color: #1f5f8e; font-weight: 600; }
     </style>
 </head>
 <body>
 <div id="appRoot">Loading Firebase...</div>
 <script>
     (function() {
-        // Wait for Firebase to be ready
-        let db, ref, set, get, update, push, child, onValue;
+        let db, auth, ref, set, get, update, push, child, onValue;
         let firebaseReady = false;
 
         window.addEventListener('firebase-ready', () => {
             db = window.db;
+            auth = window.auth;
             ref = window.firebaseRef;
             set = window.firebaseSet;
             get = window.firebaseGet;
@@ -144,20 +156,20 @@
         ];
 
         let invoiceData = [], accountsData = [], fibData = [];
-        let viewerPermissions = {};
+        let viewerPermissions = {}; // keyed by uid
         let activityLog = [];
         const MAX_LOG_ENTRIES = 200;
         let snapshots = {};
-        let userAccounts = [], currentUserEmail = null, userRole = null;
+        let currentUser = null; // Firebase user object
+        let userRole = null; // 'admin' or 'viewer'
         const ADMIN_EMAIL = "Rebaz.abdullah@Fast-pay.iq";
-        const DEFAULT_ADMIN_PW = "Admin@2026";
 
-        // Helper: simple hash
+        // Helper: simple hash (no longer used for passwords, kept for security answers)
         function simpleHash(str) { let h = 0; for (let i = 0; i < str.length; i++) { h = ((h << 5) - h) + str.charCodeAt(i); h |= 0; } return h.toString(16); }
 
         // -------------------- FIREBASE PATHS --------------------
         const PATHS = {
-            USERS: 'users',
+            USER_ROLES: 'userRoles',
             COLUMNS: 'columns',
             DATA: 'data',
             PERMISSIONS: 'permissions',
@@ -170,31 +182,26 @@
             const snapshot = await get(ref(db, path));
             return snapshot.exists() ? snapshot.val() : null;
         }
-
         async function fbSet(path, data) {
             await set(ref(db, path), data);
         }
-
         async function fbUpdate(path, data) {
             await update(ref(db, path), data);
         }
-
         async function fbPush(path, data) {
             const newRef = push(ref(db, path));
             await set(newRef, data);
             return newRef.key;
         }
 
-        // -------------------- LOAD / SAVE FUNCTIONS (Firebase) --------------------
+        // -------------------- LOAD / SAVE FUNCTIONS --------------------
         async function loadColumnsAndData() {
             try {
-                // Columns
                 const colsData = await fbGet(PATHS.COLUMNS);
                 invoiceColumns = (colsData?.invoice) ? colsData.invoice : [...DEFAULT_INVOICE_COLUMNS];
                 accountsColumns = (colsData?.accounts) ? colsData.accounts : [...DEFAULT_ACCOUNTS_COLUMNS];
                 fibColumns = (colsData?.fib) ? colsData.fib : [...DEFAULT_FIB_COLUMNS];
 
-                // Data
                 const data = await fbGet(PATHS.DATA);
                 invoiceData = (data?.invoice) ? data.invoice : [];
                 accountsData = (data?.accounts) ? data.accounts : [];
@@ -227,7 +234,6 @@
                 await saveAllToStorage();
             } catch (e) {
                 console.error("Load error:", e);
-                // fallback to defaults
                 invoiceColumns = [...DEFAULT_INVOICE_COLUMNS];
                 accountsColumns = [...DEFAULT_ACCOUNTS_COLUMNS];
                 fibColumns = [...DEFAULT_FIB_COLUMNS];
@@ -241,7 +247,6 @@
                 fib: fibColumns
             });
         }
-
         async function saveDataToStorage() {
             await fbUpdate(PATHS.DATA, {
                 invoice: invoiceData,
@@ -249,13 +254,28 @@
                 fib: fibData
             });
         }
-
         async function saveAllToStorage() {
             await saveColumnsToStorage();
             await saveDataToStorage();
         }
 
-        // -------------------- PERMISSIONS --------------------
+        // -------------------- USER ROLES (Firebase Auth + DB) --------------------
+        async function getUserRole(uid) {
+            const snapshot = await get(ref(db, `${PATHS.USER_ROLES}/${uid}`));
+            return snapshot.exists() ? snapshot.val().role : null;
+        }
+
+        async function setUserRole(uid, role) {
+            await set(ref(db, `${PATHS.USER_ROLES}/${uid}`), { role, email: currentUser?.email || '' });
+        }
+
+        async function ensureAdminExists() {
+            // This will run after auth state is known. We can't create a user without credentials.
+            // The admin user must be created manually first time via sign-up or via console.
+            // For simplicity, we can let the admin sign up with the admin email, then we set role to admin.
+        }
+
+        // -------------------- PERMISSIONS (keyed by uid) --------------------
         function getDefaultTablePerms() { return { view: true, addRow: false, deleteRow: false, edit: true, addColumn: false, deleteColumn: false }; }
 
         async function loadPermissions() {
@@ -267,31 +287,20 @@
             await fbSet(PATHS.PERMISSIONS, viewerPermissions);
         }
 
-        function ensureViewerPermissions(email) {
-            if (!viewerPermissions[email]) {
-                viewerPermissions[email] = { invoice: getDefaultTablePerms(), accounts: getDefaultTablePerms(), fib: getDefaultTablePerms() };
+        function ensureViewerPermissions(uid) {
+            if (!viewerPermissions[uid]) {
+                viewerPermissions[uid] = { invoice: getDefaultTablePerms(), accounts: getDefaultTablePerms(), fib: getDefaultTablePerms() };
                 savePermissions();
-            } else {
-                const perms = viewerPermissions[email];
-                if (!perms.invoice || typeof perms.invoice === 'boolean') {
-                    viewerPermissions[email] = {
-                        invoice: perms.invoice ? { view: true, edit: true, addRow: false, deleteRow: false, addColumn: false, deleteColumn: false } : getDefaultTablePerms(),
-                        accounts: perms.accounts ? { view: true, edit: true, addRow: false, deleteRow: false, addColumn: false, deleteColumn: false } : getDefaultTablePerms(),
-                        fib: perms.fib ? { view: true, edit: true, addRow: false, deleteRow: false, addColumn: false, deleteColumn: false } : getDefaultTablePerms()
-                    };
-                    savePermissions();
-                }
             }
         }
 
-        async function updateTablePermission(email, table, action, value) {
-            if (!viewerPermissions[email]) viewerPermissions[email] = { invoice: getDefaultTablePerms(), accounts: getDefaultTablePerms(), fib: getDefaultTablePerms() };
-            if (!viewerPermissions[email][table]) viewerPermissions[email][table] = getDefaultTablePerms();
-            viewerPermissions[email][table][action] = value;
+        async function updateTablePermission(uid, table, action, value) {
+            if (!viewerPermissions[uid]) viewerPermissions[uid] = { invoice: getDefaultTablePerms(), accounts: getDefaultTablePerms(), fib: getDefaultTablePerms() };
+            if (!viewerPermissions[uid][table]) viewerPermissions[uid][table] = getDefaultTablePerms();
+            viewerPermissions[uid][table][action] = value;
             await savePermissions();
-            await logActivity(currentUserEmail, "Changed permission", `${email} - ${table}.${action}=${value}`);
-            if (currentUserEmail === email && userRole === 'viewer') renderFullApp();
-            else if (document.getElementById("permTableBody")) renderFullApp();
+            await logActivity(currentUser?.email || 'system', "Changed permission", `${uid} - ${table}.${action}=${value}`);
+            renderFullApp();
         }
 
         // -------------------- ACTIVITY LOG --------------------
@@ -299,19 +308,16 @@
             const log = await fbGet(PATHS.ACTIVITY_LOG);
             activityLog = log ? (Array.isArray(log) ? log : Object.values(log)) : [];
         }
-
         async function saveActivityLog() {
             if (activityLog.length > MAX_LOG_ENTRIES) activityLog = activityLog.slice(-MAX_LOG_ENTRIES);
             await fbSet(PATHS.ACTIVITY_LOG, activityLog);
         }
-
         async function logActivity(userEmail, action, details = "") {
             activityLog.push({ timestamp: new Date().toISOString(), userEmail, action, details });
             await saveActivityLog();
             const container = document.getElementById("activityLogContainer");
             if (container) renderActivityLog();
         }
-
         function renderActivityLog() {
             const container = document.getElementById("activityLogContainer");
             if (!container) return;
@@ -319,21 +325,16 @@
             const reversed = [...activityLog].reverse();
             container.innerHTML = reversed.map(entry => `<div class="log-entry"><span class="log-time">${new Date(entry.timestamp).toLocaleString()}</span><span class="log-user">${escapeHtml(entry.userEmail)}</span><span class="log-action"><strong>${escapeHtml(entry.action)}</strong> ${escapeHtml(entry.details)}</span></div>`).join('');
         }
-
         async function clearActivityLog() {
-            if (confirm("Clear all logs?")) { activityLog = []; await saveActivityLog(); renderActivityLog(); await logActivity(currentUserEmail, "Cleared activity log", ""); }
+            if (confirm("Clear all logs?")) { activityLog = []; await saveActivityLog(); renderActivityLog(); await logActivity(currentUser?.email, "Cleared activity log", ""); }
         }
 
-        // -------------------- SNAPSHOTS --------------------
+        // -------------------- SNAPSHOTS (unchanged) --------------------
         async function loadSnapshots() {
             const snaps = await fbGet(PATHS.SNAPSHOTS);
             snapshots = snaps || {};
         }
-
-        async function saveSnapshots() {
-            await fbSet(PATHS.SNAPSHOTS, snapshots);
-        }
-
+        async function saveSnapshots() { await fbSet(PATHS.SNAPSHOTS, snapshots); }
         async function saveCurrentSnapshot(date = null) {
             const today = date || new Date().toISOString().split('T')[0];
             snapshots[today] = {
@@ -342,11 +343,10 @@
                 invoiceData: JSON.parse(JSON.stringify(invoiceData)), accountsData: JSON.parse(JSON.stringify(accountsData)), fibData: JSON.parse(JSON.stringify(fibData))
             };
             await saveSnapshots();
-            await logActivity(currentUserEmail, "Saved daily snapshot", `Date: ${today}`);
+            await logActivity(currentUser?.email, "Saved daily snapshot", `Date: ${today}`);
             alert(`Snapshot saved for ${today}`);
             if (document.getElementById("reportDateSelect")) populateReportDateSelect();
         }
-
         function populateReportDateSelect() {
             const select = document.getElementById("reportDateSelect");
             if (!select) return;
@@ -354,9 +354,7 @@
             select.innerHTML = '<option value="">-- Select a date --</option>';
             dates.forEach(d => { const opt = document.createElement("option"); opt.value = d; opt.textContent = d; select.appendChild(opt); });
         }
-
         function extractNumericAmount(str) { if (!str) return 0; const m = str.toString().match(/[\d,]+\.?\d*/); return m ? parseFloat(m[0].replace(/,/g, '')) : 0; }
-
         function generateReportForDate(date) {
             const s = snapshots[date];
             if (!s) { alert("No snapshot for this date."); return; }
@@ -374,17 +372,14 @@
                 <tr><th>💰 Accounts Summary</th><td>${s.accountsData.length}</td><td>Balance: $${accTotalBalance.toLocaleString()}</td></tr>
                 <tr><th>🏦 FIB Balance</th><td>${s.fibData.length}</td><td>Amount: $${fibTotalAmount.toLocaleString()} | Remaining: $${fibTotalRemaining.toLocaleString()}</td></tr>
             </tbody></table><div><strong>📋 Full Data Tables</strong></div><div><strong>Invoice Master Grid</strong>${renderTable(s.invoiceData, s.invoiceColumns)}</div><div><strong>Accounts Summary</strong>${renderTable(s.accountsData, s.accountsColumns)}</div><div><strong>FIB Balance</strong>${renderTable(s.fibData, s.fibColumns)}</div></div>`;
-            logActivity(currentUserEmail, "Generated report", date);
+            logActivity(currentUser?.email, "Generated report", date);
         }
-
         function downloadReportAsCSV() {
             const dateSelect = document.getElementById("reportDateSelect");
             const selectedDate = dateSelect ? dateSelect.value : null;
             let snapshot = null;
             if (selectedDate && snapshots[selectedDate]) { snapshot = snapshots[selectedDate]; }
-            else {
-                snapshot = { invoiceColumns, accountsColumns, fibColumns, invoiceData, accountsData, fibData, date: new Date().toISOString().split('T')[0] };
-            }
+            else { snapshot = { invoiceColumns, accountsColumns, fibColumns, invoiceData, accountsData, fibData, date: new Date().toISOString().split('T')[0] }; }
             function arrayToCSV(data, cols) {
                 if (!data.length) return "";
                 const headers = cols.map(c => `"${c.label.replace(/"/g, '""')}"`).join(',');
@@ -404,82 +399,11 @@
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
-            logActivity(currentUserEmail, "Downloaded report as CSV", `Date: ${snapshot.date}`);
+            logActivity(currentUser?.email, "Downloaded report as CSV", `Date: ${snapshot.date}`);
             alert("Report downloaded as CSV file.");
         }
 
-        // -------------------- USER ACCOUNTS (Firebase) --------------------
-        async function loadUserAccounts() {
-            const users = await fbGet(PATHS.USERS);
-            userAccounts = users ? (Array.isArray(users) ? users : Object.values(users)) : [];
-            // Ensure admin exists
-            const adminExists = userAccounts.some(u => u.email.toLowerCase() === ADMIN_EMAIL.toLowerCase());
-            if (!adminExists) {
-                userAccounts.push({ email: ADMIN_EMAIL, role: "admin", passwordHash: simpleHash(DEFAULT_ADMIN_PW), securityQuestion: "What is your city of birth?", securityAnswerHash: simpleHash("default") });
-            } else {
-                const idx = userAccounts.findIndex(u => u.email.toLowerCase() === ADMIN_EMAIL.toLowerCase());
-                if (idx !== -1) { userAccounts[idx].role = "admin"; if (!userAccounts[idx].securityQuestion) { userAccounts[idx].securityQuestion = "What is your city of birth?"; userAccounts[idx].securityAnswerHash = simpleHash("default"); } }
-            }
-            await saveUserAccounts();
-            await loadPermissions();
-            for (let acc of userAccounts) { if (acc.role === 'viewer') ensureViewerPermissions(acc.email); }
-            await saveUserAccounts();
-        }
-
-        async function saveUserAccounts() {
-            await fbSet(PATHS.USERS, userAccounts);
-        }
-
-        async function addViewerWithPassword(email, plainPassword) {
-            if (!email || !plainPassword) return false;
-            if (userAccounts.some(u => u.email.toLowerCase() === email.toLowerCase())) return false;
-            if (email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) return false;
-            userAccounts.push({ email, role: "viewer", passwordHash: simpleHash(plainPassword), securityQuestion: "What is your city of birth?", securityAnswerHash: simpleHash("default") });
-            await saveUserAccounts();
-            ensureViewerPermissions(email);
-            await logActivity(currentUserEmail, "Added viewer", email);
-            return true;
-        }
-
-        async function removeViewer(email) {
-            if (email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) return false;
-            userAccounts = userAccounts.filter(u => u.email.toLowerCase() !== email.toLowerCase());
-            await saveUserAccounts();
-            delete viewerPermissions[email];
-            await savePermissions();
-            await logActivity(currentUserEmail, "Removed viewer", email);
-            return true;
-        }
-
-        function validateLogin(email, password) {
-            const user = userAccounts.find(u => u.email.toLowerCase() === email.toLowerCase());
-            if (!user) return false;
-            if (simpleHash(password) === user.passwordHash) return { role: user.role, email: user.email };
-            return false;
-        }
-
-        function getUserByEmail(email) { return userAccounts.find(u => u.email.toLowerCase() === email.toLowerCase()); }
-
-        async function resetPasswordWithSecurity(email, answer, newPassword) {
-            const user = getUserByEmail(email);
-            if (!user) return { success: false, message: "Email not found." };
-            if (simpleHash(answer.trim().toLowerCase()) !== user.securityAnswerHash) return { success: false, message: "Incorrect security answer." };
-            user.passwordHash = simpleHash(newPassword);
-            await saveUserAccounts();
-            await logActivity(email, "Reset password via security question", "");
-            return { success: true, message: "Password reset successfully." };
-        }
-
-        async function adminResetPassword(email, newPassword) {
-            const user = getUserByEmail(email);
-            if (!user) return false;
-            user.passwordHash = simpleHash(newPassword);
-            await saveUserAccounts();
-            await logActivity(currentUserEmail, "Admin reset password", email);
-            return true;
-        }
-
-        // -------------------- DYNAMIC TABLE FUNCTIONS --------------------
+        // -------------------- DYNAMIC TABLE FUNCTIONS (unchanged) --------------------
         async function addColumnToTable(tableName, columnLabel) {
             if (!columnLabel || columnLabel.trim() === "") return false;
             const key = "col_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5);
@@ -488,10 +412,9 @@
             else if (tableName === 'accounts') { accountsColumns.push(newCol); accountsData.forEach(row => row[key] = ""); }
             else if (tableName === 'fib') { fibColumns.push(newCol); fibData.forEach(row => row[key] = ""); }
             await saveAllToStorage();
-            await logActivity(currentUserEmail, `Added column to ${tableName}`, columnLabel);
+            await logActivity(currentUser?.email, `Added column to ${tableName}`, columnLabel);
             return true;
         }
-
         async function removeColumnFromTable(tableName, colKey) {
             let columns, data;
             if (tableName === 'invoice') { columns = invoiceColumns; data = invoiceData; }
@@ -502,10 +425,9 @@
             columns.splice(idx, 1);
             data.forEach(row => delete row[colKey]);
             await saveAllToStorage();
-            await logActivity(currentUserEmail, `Removed column from ${tableName}`, colKey);
+            await logActivity(currentUser?.email, `Removed column from ${tableName}`, colKey);
             return true;
         }
-
         function renderDynamicTable(tbodyId, tableData, columns, isAdmin, tableName, perms) {
             const tbody = document.getElementById(tbodyId);
             if (!tbody) return;
@@ -543,7 +465,7 @@
                             tableData.splice(idx, 1);
                             await saveDataToStorage();
                             renderDynamicTable(tbodyId, tableData, columns, isAdmin, tableName, perms);
-                            await logActivity(currentUserEmail, `Deleted row in ${tableName}`, `Row ${idx}`);
+                            await logActivity(currentUser?.email, `Deleted row in ${tableName}`, `Row ${idx}`);
                         }
                     });
                 }
@@ -553,31 +475,78 @@
             });
         }
 
+        // -------------------- VIEWER MANAGEMENT (uses Firebase Auth) --------------------
+        async function listViewers() {
+            // Since Firebase Auth doesn't list users client-side, we store viewer UIDs in a separate node.
+            const viewersNode = await fbGet('viewers');
+            return viewersNode ? Object.keys(viewersNode) : [];
+        }
+
+        async function addViewer(email, password) {
+            try {
+                const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+                const uid = userCredential.user.uid;
+                await setUserRole(uid, 'viewer');
+                // Add to viewers list
+                await fbUpdate('viewers', { [uid]: email });
+                ensureViewerPermissions(uid);
+                await logActivity(currentUser?.email, "Added viewer", email);
+                return true;
+            } catch (error) {
+                alert("Error adding viewer: " + error.message);
+                return false;
+            }
+        }
+
+        async function removeViewer(uid, email) {
+            if (email === ADMIN_EMAIL) return false;
+            try {
+                // Delete from viewers list
+                await fbUpdate('viewers', { [uid]: null });
+                // Delete permissions
+                delete viewerPermissions[uid];
+                await savePermissions();
+                // Delete user role
+                await set(ref(db, `${PATHS.USER_ROLES}/${uid}`), null);
+                // Note: Cannot delete Firebase Auth user from client SDK (requires admin SDK). 
+                // The user account remains in Auth but won't have role/permissions.
+                await logActivity(currentUser?.email, "Removed viewer", email);
+                return true;
+            } catch (e) {
+                alert("Error: " + e.message);
+                return false;
+            }
+        }
+
         // -------------------- MAIN RENDER --------------------
-        function renderFullApp() {
+        async function renderFullApp() {
             const root = document.getElementById("appRoot");
             if (!root) return;
-            if (!currentUserEmail || !userRole) {
-                const remembered = localStorage.getItem("finance_remember_email") || "";
-                root.innerHTML = `<div class="modal" id="loginModal"><div class="modal-card"><h2>🔐 Finance Dashboard</h2><div class="input-group"><input type="email" id="loginEmail" placeholder="work@email.com" value="${escapeHtml(remembered)}"></div><div class="input-group"><input type="password" id="loginPassword" placeholder="Password"></div><div class="checkbox-group"><input type="checkbox" id="rememberCheckbox"><label>Remember email</label></div><div class="flex-btns"><button class="btn btn-primary" id="submitLoginBtn">Sign in</button><button class="btn btn-warning" id="forgotPwdBtn">Forgot Password?</button></div><div id="loginError" style="color:#bc3f2e;"></div></div></div>`;
-                const submit = () => {
-                    const email = document.getElementById('loginEmail').value.trim().toLowerCase();
-                    const pwd = document.getElementById('loginPassword').value;
-                    const auth = validateLogin(email, pwd);
-                    if (!auth) { document.getElementById('loginError').innerText = 'Invalid credentials.'; return; }
-                    if (document.getElementById('rememberCheckbox').checked) localStorage.setItem("finance_remember_email", email); else localStorage.removeItem("finance_remember_email");
-                    currentUserEmail = auth.email; userRole = auth.role;
-                    logActivity(currentUserEmail, "Logged in", "");
-                    renderFullApp();
-                };
-                document.getElementById('submitLoginBtn').onclick = submit;
-                document.getElementById('forgotPwdBtn').onclick = showForgotPasswordModal;
+            if (!currentUser) {
+                renderAuthUI();
                 return;
             }
-            const isAdmin = (userRole === "admin");
-            const isViewer = (userRole === "viewer");
+            // Ensure role loaded
+            userRole = await getUserRole(currentUser.uid);
+            if (!userRole) {
+                // If no role, maybe set as viewer by default? Or prompt admin setup.
+                if (currentUser.email === ADMIN_EMAIL) {
+                    await setUserRole(currentUser.uid, 'admin');
+                    userRole = 'admin';
+                } else {
+                    userRole = 'viewer';
+                    await setUserRole(currentUser.uid, 'viewer');
+                    ensureViewerPermissions(currentUser.uid);
+                }
+            }
+            const isAdmin = (userRole === 'admin');
+            const isViewer = (userRole === 'viewer');
             let viewerPerms = null;
-            if (isViewer) { ensureViewerPermissions(currentUserEmail); viewerPerms = viewerPermissions[currentUserEmail]; }
+            if (isViewer) {
+                ensureViewerPermissions(currentUser.uid);
+                viewerPerms = viewerPermissions[currentUser.uid];
+            }
+
             const renderHeaders = (columns, tableName, perms) => {
                 const canDeleteCol = isAdmin || (perms && perms.deleteColumn);
                 return columns.map(col => `<th>${escapeHtml(col.label)}${canDeleteCol ? `<button class="remove-col-btn" data-table="${tableName}" data-key="${col.key}" title="Remove column">✖</button>` : ''}</th>`).join('');
@@ -589,12 +558,14 @@
             if (isAdmin || invPerms.view) sectionsHtml.push(`<div class="section"><div class="section-header"><div class="section-title">📄 Invoice Master Grid</div><div class="table-actions" id="invoice-actions-container"></div></div><div class="table-wrapper"><table class="editable-table"><thead><tr>${renderHeaders(invoiceColumns, 'invoice', invPerms)}<th>Action</th></tr></thead><tbody id="invoice-tbody"></tbody></table></div></div>`);
             if (isAdmin || accPerms.view) sectionsHtml.push(`<div class="section"><div class="section-header"><div class="section-title">💰 Accounts Summary</div><div class="table-actions" id="accounts-actions-container"></div></div><div class="table-wrapper"><table class="editable-table"><thead><tr>${renderHeaders(accountsColumns, 'accounts', accPerms)}<th>Action</th></tr></thead><tbody id="accounts-tbody"></tbody></table></div></div>`);
             if (isAdmin || fibPerms.view) sectionsHtml.push(`<div class="section"><div class="section-header"><div class="section-title">🏦 FIB Balance</div><div class="table-actions" id="fib-actions-container"></div></div><div class="table-wrapper"><table class="editable-table"><thead><tr>${renderHeaders(fibColumns, 'fib', fibPerms)}<th>Action</th></tr></thead><tbody id="fib-tbody"></tbody></table></div></div>`);
-            root.innerHTML = `<div class="app-container"><div class="user-bar"><div class="user-info"><span class="user-badge">🔒 ${escapeHtml(currentUserEmail)}</span><span class="role-badge">${isAdmin ? '👑 ADMIN' : '👁️ VIEWER'}</span></div><div><button class="btn-sm print-btn" id="printBtn">🖨️ Print Tables Only</button><button class="btn-sm" id="logoutBtn">🚪 Logout</button></div></div>
+
+            root.innerHTML = `<div class="app-container"><div class="user-bar"><div class="user-info"><span class="user-badge">🔒 ${escapeHtml(currentUser.email)}</span><span class="role-badge">${isAdmin ? '👑 ADMIN' : '👁️ VIEWER'}</span></div><div><button class="btn-sm print-btn" id="printBtn">🖨️ Print Tables Only</button><button class="btn-sm" id="logoutBtn">🚪 Logout</button></div></div>
                 ${isAdmin ? `<div class="admin-panel"><strong>👥 Granular Permissions per Viewer</strong><div style="display:flex; gap:8px; margin:10px 0;"><input type="email" id="newViewerEmail" placeholder="colleague@company.com"><input type="password" id="newViewerPassword" placeholder="Password"><button class="btn btn-success" id="addViewerBtn">➕ Add Viewer</button></div><div id="viewerListContainer" class="colleague-list"></div><div><strong>🔐 Permission Matrix</strong><table class="permission-table" id="permTable"><thead><tr><th>Viewer</th><th>Table</th><th>View</th><th>Edit</th><th>Add Row</th><th>Delete Row</th><th>Add Column</th><th>Delete Column</th></tr></thead><tbody id="permTableBody"></tbody></table></div>
                 <div style="margin-top:20px;"><strong>📅 Daily Reports</strong><div><button class="btn btn-primary" id="saveSnapshotBtn">💾 Save Today's Snapshot</button></div><div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;"><select id="reportDateSelect"></select><button class="btn btn-success" id="generateReportBtn">📊 Generate Report</button><button class="btn btn-info" id="downloadCsvBtn">⬇️ Download Report as CSV</button></div><div id="reportContent"></div></div>
                 <div style="margin-top:20px;"><strong>📋 Activity Log</strong><button class="btn-sm clear-log-btn" id="clearLogBtn">Clear Log</button><div id="activityLogContainer" class="activity-log"></div></div></div>` : ''}
                 ${sectionsHtml.join('')}
-                <div class="info-bar"><div>${isAdmin ? 'Admin: full control' : 'Limited by permissions'}</div><div>Data stored in Firebase</div></div></div>`;
+                <div class="info-bar"><div>${isAdmin ? 'Admin: full control' : 'Limited by permissions'}</div><div>Data stored in Firebase · Auth Secured</div></div></div>`;
+
             const refreshTables = () => {
                 if (document.getElementById("invoice-tbody")) renderDynamicTable("invoice-tbody", invoiceData, invoiceColumns, isAdmin, "Invoice", invPerms || { edit: false, deleteRow: false });
                 if (document.getElementById("accounts-tbody")) renderDynamicTable("accounts-tbody", accountsData, accountsColumns, isAdmin, "Accounts", accPerms || { edit: false, deleteRow: false });
@@ -602,82 +573,94 @@
                 if (isAdmin) { document.querySelectorAll('.remove-col-btn').forEach(btn => btn.addEventListener('click', async (e) => { const table = btn.getAttribute('data-table'), key = btn.getAttribute('data-key'); if (confirm("Remove column?")) { await removeColumnFromTable(table, key); renderFullApp(); } })); }
             };
             refreshTables();
+
             if (isAdmin) {
-                const buildActionButtons = (tableName, addRowPerm, addColPerm) => {
-                    let btns = '';
-                    if (addRowPerm) btns += `<button class="btn btn-success" id="add_${tableName}_row">➕ Add Row</button>`;
-                    if (addColPerm) btns += `<button class="btn btn-primary" id="add_${tableName}_col">➕ Add Column</button>`;
-                    btns += `<button class="btn btn-primary" id="save_${tableName}_btn">💾 Save</button><button class="btn btn-warning" id="reset_${tableName}_btn">⟳ Reset</button>`;
-                    return btns;
-                };
+                // Setup admin actions (same as before but async)
                 const invDiv = document.getElementById("invoice-actions-container");
                 if (invDiv) {
-                    invDiv.innerHTML = buildActionButtons('invoice', true, true);
-                    document.getElementById("add_invoice_row")?.addEventListener("click", async () => { const newRow = {}; invoiceColumns.forEach(c => newRow[c.key] = ""); invoiceData.push(newRow); await saveDataToStorage(); refreshTables(); await logActivity(currentUserEmail,"Added invoice row",""); });
+                    invDiv.innerHTML = `<button class="btn btn-success" id="add_invoice_row">➕ Add Row</button><button class="btn btn-primary" id="add_invoice_col">➕ Add Column</button><button class="btn btn-primary" id="save_invoice_btn">💾 Save</button><button class="btn btn-warning" id="reset_invoice_btn">⟳ Reset</button>`;
+                    document.getElementById("add_invoice_row")?.addEventListener("click", async () => { const newRow = {}; invoiceColumns.forEach(c => newRow[c.key] = ""); invoiceData.push(newRow); await saveDataToStorage(); refreshTables(); await logActivity(currentUser.email,"Added invoice row",""); });
                     document.getElementById("add_invoice_col")?.addEventListener("click", async () => { const name = prompt("New column name:"); if(name) { await addColumnToTable('invoice', name); renderFullApp(); } });
                     document.getElementById("save_invoice_btn")?.addEventListener("click", async () => { await saveDataToStorage(); alert("Saved."); });
-                    document.getElementById("reset_invoice_btn")?.addEventListener("click", async () => { if(confirm("Reset Invoice?")){ invoiceColumns = JSON.parse(JSON.stringify(DEFAULT_INVOICE_COLUMNS)); invoiceData = []; await saveAllToStorage(); await loadColumnsAndData(); renderFullApp(); await logActivity(currentUserEmail,"Reset Invoice",""); } });
+                    document.getElementById("reset_invoice_btn")?.addEventListener("click", async () => { if(confirm("Reset Invoice?")){ invoiceColumns = JSON.parse(JSON.stringify(DEFAULT_INVOICE_COLUMNS)); invoiceData = []; await saveAllToStorage(); await loadColumnsAndData(); renderFullApp(); await logActivity(currentUser.email,"Reset Invoice",""); } });
                 }
                 const accDiv = document.getElementById("accounts-actions-container");
                 if (accDiv) {
-                    accDiv.innerHTML = buildActionButtons('accounts', true, true);
-                    document.getElementById("add_accounts_row")?.addEventListener("click", async () => { const newRow = {}; accountsColumns.forEach(c => newRow[c.key] = ""); accountsData.push(newRow); await saveDataToStorage(); refreshTables(); await logActivity(currentUserEmail,"Added accounts row",""); });
+                    accDiv.innerHTML = `<button class="btn btn-success" id="add_accounts_row">➕ Add Row</button><button class="btn btn-primary" id="add_accounts_col">➕ Add Column</button><button class="btn btn-primary" id="save_accounts_btn">💾 Save</button><button class="btn btn-warning" id="reset_accounts_btn">⟳ Reset</button>`;
+                    document.getElementById("add_accounts_row")?.addEventListener("click", async () => { const newRow = {}; accountsColumns.forEach(c => newRow[c.key] = ""); accountsData.push(newRow); await saveDataToStorage(); refreshTables(); await logActivity(currentUser.email,"Added accounts row",""); });
                     document.getElementById("add_accounts_col")?.addEventListener("click", async () => { const name = prompt("New column name:"); if(name) { await addColumnToTable('accounts', name); renderFullApp(); } });
                     document.getElementById("save_accounts_btn")?.addEventListener("click", async () => { await saveDataToStorage(); alert("Saved."); });
-                    document.getElementById("reset_accounts_btn")?.addEventListener("click", async () => { if(confirm("Reset Accounts?")){ accountsColumns = JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS_COLUMNS)); accountsData = []; await saveAllToStorage(); await loadColumnsAndData(); renderFullApp(); await logActivity(currentUserEmail,"Reset Accounts",""); } });
+                    document.getElementById("reset_accounts_btn")?.addEventListener("click", async () => { if(confirm("Reset Accounts?")){ accountsColumns = JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS_COLUMNS)); accountsData = []; await saveAllToStorage(); await loadColumnsAndData(); renderFullApp(); await logActivity(currentUser.email,"Reset Accounts",""); } });
                 }
                 const fibDiv = document.getElementById("fib-actions-container");
                 if (fibDiv) {
-                    fibDiv.innerHTML = buildActionButtons('fib', true, true);
-                    document.getElementById("add_fib_row")?.addEventListener("click", async () => { const newRow = {}; fibColumns.forEach(c => newRow[c.key] = ""); fibData.push(newRow); await saveDataToStorage(); refreshTables(); await logActivity(currentUserEmail,"Added FIB row",""); });
+                    fibDiv.innerHTML = `<button class="btn btn-success" id="add_fib_row">➕ Add Row</button><button class="btn btn-primary" id="add_fib_col">➕ Add Column</button><button class="btn btn-primary" id="save_fib_btn">💾 Save</button><button class="btn btn-warning" id="reset_fib_btn">⟳ Reset</button>`;
+                    document.getElementById("add_fib_row")?.addEventListener("click", async () => { const newRow = {}; fibColumns.forEach(c => newRow[c.key] = ""); fibData.push(newRow); await saveDataToStorage(); refreshTables(); await logActivity(currentUser.email,"Added FIB row",""); });
                     document.getElementById("add_fib_col")?.addEventListener("click", async () => { const name = prompt("New column name:"); if(name) { await addColumnToTable('fib', name); renderFullApp(); } });
                     document.getElementById("save_fib_btn")?.addEventListener("click", async () => { await saveDataToStorage(); alert("Saved."); });
-                    document.getElementById("reset_fib_btn")?.addEventListener("click", async () => { if(confirm("Reset FIB?")){ fibColumns = JSON.parse(JSON.stringify(DEFAULT_FIB_COLUMNS)); fibData = []; await saveAllToStorage(); await loadColumnsAndData(); renderFullApp(); await logActivity(currentUserEmail,"Reset FIB",""); } });
+                    document.getElementById("reset_fib_btn")?.addEventListener("click", async () => { if(confirm("Reset FIB?")){ fibColumns = JSON.parse(JSON.stringify(DEFAULT_FIB_COLUMNS)); fibData = []; await saveAllToStorage(); await loadColumnsAndData(); renderFullApp(); await logActivity(currentUser.email,"Reset FIB",""); } });
                 }
-                const refreshPermTable = () => {
-                    const viewers = userAccounts.filter(u => u.role === "viewer");
-                    const container = document.getElementById("viewerListContainer");
-                    if (container) {
-                        container.innerHTML = viewers.length ? viewers.map(v => `<div class="colleague-tag">${escapeHtml(v.email)} <button class="remove-colleague" data-email="${escapeHtml(v.email)}">✖</button></div>`).join('') : '<div>No viewers.</div>';
-                        document.querySelectorAll(".remove-colleague").forEach(btn => btn.addEventListener("click", async (e) => { const email = btn.getAttribute("data-email"); if(confirm(`Remove ${email}?`)){ await removeViewer(email); refreshPermTable(); if(currentUserEmail===email) logout(); else renderFullApp(); } }));
+
+                // Viewer management
+                const viewers = await listViewers();
+                const container = document.getElementById("viewerListContainer");
+                if (container) {
+                    container.innerHTML = '';
+                    for (let uid of viewers) {
+                        const email = (await fbGet(`viewers/${uid}`)) || 'unknown';
+                        container.innerHTML += `<div class="colleague-tag">${escapeHtml(email)} <button class="remove-colleague" data-uid="${uid}" data-email="${escapeHtml(email)}">✖</button></div>`;
                     }
-                    const tbody = document.getElementById("permTableBody");
-                    if (tbody) {
-                        tbody.innerHTML = "";
-                        const tables = ['invoice', 'accounts', 'fib'];
-                        for (let viewer of viewers) {
-                            ensureViewerPermissions(viewer.email);
-                            const perms = viewerPermissions[viewer.email];
-                            for (let tbl of tables) {
-                                const p = perms[tbl] || getDefaultTablePerms();
-                                const row = tbody.insertRow();
-                                if (tbl === 'invoice') row.insertCell(0).innerHTML = `<strong>${escapeHtml(viewer.email)}</strong>`;
-                                else row.insertCell(0).innerHTML = '';
-                                row.insertCell(1).innerHTML = tbl.charAt(0).toUpperCase() + tbl.slice(1);
-                                const addCheck = (action, checked) => {
-                                    const cell = row.insertCell();
-                                    const chk = document.createElement("input");
-                                    chk.type = "checkbox";
-                                    chk.checked = checked;
-                                    chk.className = "perm-checkbox";
-                                    chk.addEventListener("change", (e) => updateTablePermission(viewer.email, tbl, action, e.target.checked));
-                                    cell.appendChild(chk);
-                                };
-                                addCheck('view', p.view); addCheck('edit', p.edit); addCheck('addRow', p.addRow); addCheck('deleteRow', p.deleteRow); addCheck('addColumn', p.addColumn); addCheck('deleteColumn', p.deleteColumn);
-                            }
+                    document.querySelectorAll(".remove-colleague").forEach(btn => btn.addEventListener("click", async (e) => {
+                        const uid = btn.getAttribute("data-uid");
+                        const email = btn.getAttribute("data-email");
+                        if (confirm(`Remove ${email}?`)) {
+                            await removeViewer(uid, email);
+                            renderFullApp();
+                        }
+                    }));
+                }
+                document.getElementById("addViewerBtn")?.addEventListener("click", async () => {
+                    const email = document.getElementById("newViewerEmail")?.value.trim();
+                    const pwd = document.getElementById("newViewerPassword")?.value;
+                    if (email && pwd) {
+                        const success = await addViewer(email, pwd);
+                        if (success) {
+                            document.getElementById("newViewerEmail").value = '';
+                            document.getElementById("newViewerPassword").value = '';
+                            renderFullApp();
+                        }
+                    } else alert("Enter email and password.");
+                });
+
+                // Permission matrix
+                const permBody = document.getElementById("permTableBody");
+                if (permBody) {
+                    permBody.innerHTML = '';
+                    const tables = ['invoice', 'accounts', 'fib'];
+                    for (let uid of viewers) {
+                        const email = (await fbGet(`viewers/${uid}`)) || uid;
+                        ensureViewerPermissions(uid);
+                        const perms = viewerPermissions[uid];
+                        for (let tbl of tables) {
+                            const p = perms[tbl] || getDefaultTablePerms();
+                            const row = permBody.insertRow();
+                            if (tbl === 'invoice') row.insertCell(0).innerHTML = `<strong>${escapeHtml(email)}</strong>`;
+                            else row.insertCell(0).innerHTML = '';
+                            row.insertCell(1).innerHTML = tbl.charAt(0).toUpperCase() + tbl.slice(1);
+                            const addCheck = (action, checked) => {
+                                const cell = row.insertCell();
+                                const chk = document.createElement("input");
+                                chk.type = "checkbox";
+                                chk.checked = checked;
+                                chk.className = "perm-checkbox";
+                                chk.addEventListener("change", (e) => updateTablePermission(uid, tbl, action, e.target.checked));
+                                cell.appendChild(chk);
+                            };
+                            addCheck('view', p.view); addCheck('edit', p.edit); addCheck('addRow', p.addRow); addCheck('deleteRow', p.deleteRow); addCheck('addColumn', p.addColumn); addCheck('deleteColumn', p.deleteColumn);
                         }
                     }
-                };
-                refreshPermTable();
-                document.getElementById("addViewerBtn")?.addEventListener("click", async () => {
-                    const email = document.getElementById("newViewerEmail")?.value.trim().toLowerCase();
-                    const pwd = document.getElementById("newViewerPassword")?.value;
-                    if (email && pwd && await addViewerWithPassword(email, pwd)) {
-                        document.getElementById("newViewerEmail").value = ""; document.getElementById("newViewerPassword").value = "";
-                        refreshPermTable();
-                        alert(`Viewer ${email} added.`);
-                    } else alert("Invalid or duplicate.");
-                });
+                }
+
                 populateReportDateSelect();
                 document.getElementById("saveSnapshotBtn")?.addEventListener("click", () => saveCurrentSnapshot());
                 document.getElementById("generateReportBtn")?.addEventListener("click", () => { const d = document.getElementById("reportDateSelect").value; if(d) generateReportForDate(d); else alert("Select date."); });
@@ -685,66 +668,116 @@
                 renderActivityLog();
                 document.getElementById("clearLogBtn")?.addEventListener("click", clearActivityLog);
             }
-            document.getElementById("logoutBtn")?.addEventListener("click", () => { logActivity(currentUserEmail,"Logged out",""); currentUserEmail=null; userRole=null; localStorage.removeItem("finance_remember_email"); renderFullApp(); });
-            document.getElementById("printBtn")?.addEventListener("click", () => { logActivity(currentUserEmail,"Printed dashboard",""); window.print(); });
+
+            document.getElementById("logoutBtn")?.addEventListener("click", async () => {
+                await logActivity(currentUser.email, "Logged out", "");
+                await signOut(auth);
+                // currentUser will become null via onAuthStateChanged
+            });
+            document.getElementById("printBtn")?.addEventListener("click", () => { logActivity(currentUser.email,"Printed dashboard",""); window.print(); });
         }
 
-        function showForgotPasswordModal() {
-            const modalDiv = document.createElement('div');
-            modalDiv.className = 'modal';
-            modalDiv.innerHTML = `<div class="modal-card"><h2>🔐 Reset Password</h2><div class="input-group"><input type="email" id="resetEmail" placeholder="Email"></div><div id="secArea" style="display:none;"><div class="input-group"><input type="text" id="secAnswer" placeholder="Security answer"></div><div class="input-group"><input type="password" id="newPwd" placeholder="New password"></div><div class="input-group"><input type="password" id="confirmPwd" placeholder="Confirm"></div></div><div id="msg"></div><div class="flex-btns"><button class="btn btn-primary" id="nextBtn">Next</button><button class="btn btn-warning" id="cancelBtn">Cancel</button></div></div>`;
-            document.body.appendChild(modalDiv);
-            let step = 1, email = '', question = '';
-            const next = document.getElementById('nextBtn'), cancel = document.getElementById('cancelBtn');
-            const update = () => {
-                if (step === 1) { document.getElementById('secArea').style.display = 'none'; document.getElementById('msg').innerHTML = 'Enter your email.'; next.innerText = 'Next'; }
-                else { document.getElementById('secArea').style.display = 'block'; document.getElementById('msg').innerHTML = `<strong>Security Question:</strong> ${question}`; next.innerText = 'Reset'; }
-            };
-            const flow = async () => {
-                if (step === 1) {
-                    const em = document.getElementById('resetEmail').value.trim().toLowerCase();
-                    const user = getUserByEmail(em);
-                    if (!user) { alert('Email not found.'); return; }
-                    email = em; question = user.securityQuestion || "What is your city of birth?";
-                    step = 2; update();
-                } else {
-                    const ans = document.getElementById('secAnswer').value.trim().toLowerCase();
-                    const np = document.getElementById('newPwd').value;
-                    const cp = document.getElementById('confirmPwd').value;
-                    if (!ans || !np || !cp) { alert('Fill all fields.'); return; }
-                    if (np !== cp) { alert('Passwords mismatch.'); return; }
-                    if (np.length < 4) { alert('Min 4 chars.'); return; }
-                    const res = await resetPasswordWithSecurity(email, ans, np);
-                    alert(res.message);
-                    if (res.success) modalDiv.remove();
+        function renderAuthUI() {
+            const root = document.getElementById("appRoot");
+            root.innerHTML = `<div class="modal" id="authModal"><div class="modal-card">
+                <div class="tab-container">
+                    <button class="tab-btn active" id="loginTab">Sign In</button>
+                    <button class="tab-btn" id="signupTab">Sign Up</button>
+                </div>
+                <div id="authForm">
+                    <div class="input-group"><input type="email" id="authEmail" placeholder="Email"></div>
+                    <div class="input-group"><input type="password" id="authPassword" placeholder="Password"></div>
+                    <div id="authError" class="error-message"></div>
+                    <div class="flex-btns">
+                        <button class="btn btn-primary" id="authSubmitBtn">Sign In</button>
+                        <button class="btn btn-warning" id="forgotPwdBtn">Forgot Password?</button>
+                    </div>
+                </div>
+            </div></div>`;
+
+            let mode = 'login';
+            const loginTab = document.getElementById('loginTab');
+            const signupTab = document.getElementById('signupTab');
+            const submitBtn = document.getElementById('authSubmitBtn');
+            const emailInput = document.getElementById('authEmail');
+            const passwordInput = document.getElementById('authPassword');
+            const errorDiv = document.getElementById('authError');
+
+            function setMode(newMode) {
+                mode = newMode;
+                loginTab.classList.toggle('active', mode === 'login');
+                signupTab.classList.toggle('active', mode === 'signup');
+                submitBtn.textContent = mode === 'login' ? 'Sign In' : 'Sign Up';
+                errorDiv.textContent = '';
+            }
+
+            loginTab.onclick = () => setMode('login');
+            signupTab.onclick = () => setMode('signup');
+
+            async function handleAuth() {
+                const email = emailInput.value.trim();
+                const pwd = passwordInput.value;
+                if (!email || !pwd) { errorDiv.textContent = 'Email and password required.'; return; }
+                try {
+                    if (mode === 'login') {
+                        await signInWithEmailAndPassword(auth, email, pwd);
+                        // onAuthStateChanged will handle the rest
+                    } else {
+                        // Sign Up
+                        const cred = await createUserWithEmailAndPassword(auth, email, pwd);
+                        // Assign role: if email is admin email, set as admin, else viewer
+                        const role = (email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) ? 'admin' : 'viewer';
+                        await setUserRole(cred.user.uid, role);
+                        if (role === 'viewer') {
+                            await fbUpdate('viewers', { [cred.user.uid]: email });
+                            ensureViewerPermissions(cred.user.uid);
+                        }
+                        // Auto sign-in handled by onAuthStateChanged
+                    }
+                } catch (err) {
+                    errorDiv.textContent = err.message;
+                }
+            }
+
+            submitBtn.onclick = handleAuth;
+            document.getElementById('forgotPwdBtn').onclick = async () => {
+                const email = emailInput.value.trim();
+                if (!email) { errorDiv.textContent = 'Enter your email first.'; return; }
+                try {
+                    await sendPasswordResetEmail(auth, email);
+                    alert('Password reset email sent!');
+                } catch (err) {
+                    errorDiv.textContent = err.message;
                 }
             };
-            next.onclick = flow; cancel.onclick = () => modalDiv.remove();
-            update();
+            // Allow enter key
+            [emailInput, passwordInput].forEach(i => i.addEventListener('keypress', (e) => { if(e.key==='Enter') handleAuth(); }));
         }
 
         function escapeHtml(str) { return String(str).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
 
-        function logout() { if (currentUserEmail) logActivity(currentUserEmail,"Logged out",""); currentUserEmail=null; userRole=null; localStorage.removeItem("finance_remember_email"); renderFullApp(); }
-
+        // -------------------- BOOTSTRAP --------------------
         async function bootstrap() {
             if (!firebaseReady) return;
-            // Show loading
             document.getElementById('appRoot').innerHTML = '<div class="loading-overlay"><div>Loading data from Firebase...</div></div>';
-            try {
-                await loadActivityLog();
-                await loadUserAccounts();
-                await loadColumnsAndData();
-                await loadSnapshots();
-                renderFullApp();
-            } catch (e) {
-                console.error(e);
-                alert("Error loading from Firebase. Check console.");
-            }
+
+            // Set up auth state observer
+            onAuthStateChanged(auth, async (user) => {
+                currentUser = user;
+                if (user) {
+                    // Load data
+                    await loadActivityLog();
+                    await loadPermissions();
+                    await loadColumnsAndData();
+                    await loadSnapshots();
+                    renderFullApp();
+                } else {
+                    renderAuthUI();
+                }
+            });
         }
 
         window.bootstrap = bootstrap;
-        // If Firebase already ready, run bootstrap
         if (firebaseReady) bootstrap();
     })();
 </script>
