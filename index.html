@@ -179,6 +179,21 @@
         let userRole = null;
         const ADMIN_EMAIL = "Rebaz.abdullah@Fast-pay.iq";
 
+        // Helper: get current date in Baghdad time (YYYY-MM-DD)
+        function getBaghdadDate() {
+            const date = new Date();
+            const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad', year: 'numeric', month: '2-digit', day: '2-digit' });
+            return formatter.format(date);
+        }
+
+        // Helper: format timestamp for display in Baghdad time
+        function formatBaghdadDateTime(isoString) {
+            return new Date(isoString).toLocaleString('en-IQ', { timeZone: 'Asia/Baghdad' });
+        }
+        function formatBaghdadDate(isoString) {
+            return new Date(isoString).toLocaleDateString('en-IQ', { timeZone: 'Asia/Baghdad' });
+        }
+
         function simpleHash(str) { let h = 0; for (let i = 0; i < str.length; i++) { h = ((h << 5) - h) + str.charCodeAt(i); h |= 0; } return h.toString(16); }
 
         const PATHS = {
@@ -346,7 +361,7 @@
             if (!container) return;
             if (activityLog.length === 0) { container.innerHTML = '<div class="log-entry" style="justify-content:center;">No activity recorded.</div>'; return; }
             const reversed = [...activityLog].reverse();
-            container.innerHTML = reversed.map(entry => `<div class="log-entry"><span class="log-time">${new Date(entry.timestamp).toLocaleString()}</span><span class="log-user">${escapeHtml(entry.userEmail)}</span><span class="log-action"><strong>${escapeHtml(entry.action)}</strong> ${escapeHtml(entry.details)}</span></div>`).join('');
+            container.innerHTML = reversed.map(entry => `<div class="log-entry"><span class="log-time">${formatBaghdadDateTime(entry.timestamp)}</span><span class="log-user">${escapeHtml(entry.userEmail)}</span><span class="log-action"><strong>${escapeHtml(entry.action)}</strong> ${escapeHtml(entry.details)}</span></div>`).join('');
         }
         async function clearActivityLog() {
             if (confirm("Clear all logs?")) { activityLog = []; await saveActivityLog(); renderActivityLog(); await logActivity(currentUser?.email, "Cleared activity log", ""); }
@@ -358,7 +373,7 @@
         }
         async function saveSnapshots() { await fbSet(PATHS.SNAPSHOTS, snapshots); }
         async function saveCurrentSnapshot(date = null) {
-            const today = date || new Date().toISOString().split('T')[0];
+            const today = date || getBaghdadDate(); // Use Baghdad date
             snapshots[today] = {
                 date: today, timestamp: new Date().toISOString(),
                 invoiceColumns: JSON.parse(JSON.stringify(invoiceColumns)), accountsColumns: JSON.parse(JSON.stringify(accountsColumns)), fibColumns: JSON.parse(JSON.stringify(fibColumns)),
@@ -401,7 +416,7 @@
             const selectedDate = dateSelect ? dateSelect.value : null;
             let snapshot = null;
             if (selectedDate && snapshots[selectedDate]) { snapshot = snapshots[selectedDate]; }
-            else { snapshot = { invoiceColumns, accountsColumns, fibColumns, invoiceData, accountsData, fibData, date: new Date().toISOString().split('T')[0] }; }
+            else { snapshot = { invoiceColumns, accountsColumns, fibColumns, invoiceData, accountsData, fibData, date: getBaghdadDate() }; }
             function arrayToCSV(data, cols) {
                 if (!data.length) return "";
                 const headers = cols.map(c => `"${c.label.replace(/"/g, '""')}"`).join(',');
@@ -542,14 +557,12 @@
                 return false;
             }
             try {
-                // Check if already a user
                 const viewers = await fbGet('viewers') || {};
                 const alreadyExists = Object.values(viewers).some(e => e.toLowerCase() === email) || email === ADMIN_EMAIL.toLowerCase();
                 if (alreadyExists) {
                     alert("This email already has access. Please sign in.");
                     return false;
                 }
-                // Check if already requested
                 const requests = await fbGet(PATHS.ACCESS_REQUESTS) || {};
                 const alreadyRequested = Object.values(requests).some(r => r.email === email && r.status === 'pending');
                 if (alreadyRequested) {
@@ -630,7 +643,7 @@
                     <div style="margin-top:20px;"><strong>📋 Activity Log</strong><button class="btn-sm clear-log-btn" id="clearLogBtn">Clear Log</button><div id="activityLogContainer" class="activity-log"></div></div>
                 </div>` : ''}
                 ${sectionsHtml.join('')}
-                <div class="info-bar"><div>${isAdmin ? 'Admin: full control' : 'Limited by permissions'}</div><div>Data stored in Firebase · Auth Secured</div></div></div>`;
+                <div class="info-bar"><div>${isAdmin ? 'Admin: full control' : 'Limited by permissions'}</div><div>Data stored in Firebase · Auth Secured · Baghdad Time</div></div></div>`;
 
             const refreshTables = () => {
                 if (document.getElementById("invoice-tbody")) renderDynamicTable("invoice-tbody", invoiceData, invoiceColumns, isAdmin, "Invoice", invPerms || { edit: false, deleteRow: false });
@@ -641,7 +654,6 @@
             refreshTables();
 
             if (isAdmin) {
-                // Pending requests
                 const reqContainer = document.getElementById("requestsList");
                 const requests = await getAccessRequests();
                 if (requests.length === 0) {
@@ -649,7 +661,7 @@
                 } else {
                     reqContainer.innerHTML = requests.map(r => `
                         <div class="request-item">
-                            <span>${escapeHtml(r.email)} (${new Date(r.timestamp).toLocaleDateString()})</span>
+                            <span>${escapeHtml(r.email)} (${formatBaghdadDate(r.timestamp)})</span>
                             <div>
                                 <button class="approve-btn" data-id="${r.id}" data-email="${escapeHtml(r.email)}">Approve</button>
                                 <button class="reject-btn" data-id="${r.id}">Reject</button>
@@ -680,7 +692,6 @@
                     });
                 }
 
-                // Setup admin actions
                 const invDiv = document.getElementById("invoice-actions-container");
                 if (invDiv) {
                     invDiv.innerHTML = `<button class="btn btn-success" id="add_invoice_row">➕ Add Row</button><button class="btn btn-primary" id="add_invoice_col">➕ Add Column</button><button class="btn btn-primary" id="save_invoice_btn">💾 Save</button><button class="btn btn-warning" id="reset_invoice_btn">⟳ Reset</button>`;
@@ -877,7 +888,6 @@
             onAuthStateChanged(auth, async (user) => {
                 currentUser = user;
                 if (user) {
-                    // Check if user still has access
                     const role = await getUserRole(user.uid);
                     const isAdminEmail = user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
                     
@@ -890,7 +900,6 @@
                         }
                     }
 
-                    // Set up real-time listener to detect if admin removes this user
                     const userRoleRef = ref(db, `${PATHS.USER_ROLES}/${user.uid}`);
                     const viewersRef = ref(db, `viewers/${user.uid}`);
                     
