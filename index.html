@@ -32,7 +32,6 @@
         const db = getDatabase(app);
         const auth = getAuth(app);
 
-        // Expose to global
         window.db = db;
         window.auth = auth;
         window.firebaseRef = ref;
@@ -280,7 +279,23 @@
             await set(ref(db, `${PATHS.USER_ROLES}/${uid}`), { role, email: currentUser?.email || '' });
         }
 
-        function getDefaultTablePerms() { return { view: true, addRow: false, deleteRow: false, edit: false, addColumn: false, deleteColumn: false }; }
+        function getDefaultTablePerms() { 
+            return { 
+                view: true, 
+                edit: false,
+                addRow: false, 
+                deleteRow: false, 
+                addColumn: false, 
+                deleteColumn: false 
+            }; 
+        }
+        function getDefaultViewerPermissions() {
+            return {
+                invoice: getDefaultTablePerms(),
+                accounts: getDefaultTablePerms(),
+                fib: getDefaultTablePerms()
+            };
+        }
 
         async function loadPermissions() {
             const perms = await fbGet(PATHS.PERMISSIONS);
@@ -293,13 +308,18 @@
 
         function ensureViewerPermissions(uid) {
             if (!viewerPermissions[uid]) {
-                viewerPermissions[uid] = { invoice: getDefaultTablePerms(), accounts: getDefaultTablePerms(), fib: getDefaultTablePerms() };
+                viewerPermissions[uid] = getDefaultViewerPermissions();
                 savePermissions();
+            } else {
+                const perms = viewerPermissions[uid];
+                if (!perms.invoice) perms.invoice = getDefaultTablePerms();
+                if (!perms.accounts) perms.accounts = getDefaultTablePerms();
+                if (!perms.fib) perms.fib = getDefaultTablePerms();
             }
         }
 
         async function updateTablePermission(uid, table, action, value) {
-            if (!viewerPermissions[uid]) viewerPermissions[uid] = { invoice: getDefaultTablePerms(), accounts: getDefaultTablePerms(), fib: getDefaultTablePerms() };
+            if (!viewerPermissions[uid]) viewerPermissions[uid] = getDefaultViewerPermissions();
             if (!viewerPermissions[uid][table]) viewerPermissions[uid][table] = getDefaultTablePerms();
             viewerPermissions[uid][table][action] = value;
             await savePermissions();
@@ -499,10 +519,13 @@
         async function removeViewer(uid, email) {
             if (email === ADMIN_EMAIL) return false;
             try {
+                // Remove from viewers list
                 await fbUpdate('viewers', { [uid]: null });
+                // Delete permissions
                 delete viewerPermissions[uid];
                 await savePermissions();
-                await set(ref(db, `${PATHS.USER_ROLES}/${uid}`), null);
+                // Set role to revoked (triggers real-time listener)
+                await set(ref(db, `${PATHS.USER_ROLES}/${uid}`), { role: 'revoked', email: email });
                 await logActivity(currentUser?.email, "Removed viewer", email);
                 return true;
             } catch (e) {
@@ -721,11 +744,16 @@
                         const email = (await fbGet(`viewers/${uid}`)) || uid;
                         ensureViewerPermissions(uid);
                         const perms = viewerPermissions[uid];
+                        let firstRow = true;
                         for (let tbl of tables) {
                             const p = perms[tbl] || getDefaultTablePerms();
                             const row = permBody.insertRow();
-                            if (tbl === 'invoice') row.insertCell(0).innerHTML = `<strong>${escapeHtml(email)}</strong>`;
-                            else row.insertCell(0).innerHTML = '';
+                            if (firstRow) {
+                                row.insertCell(0).innerHTML = `<strong>${escapeHtml(email)}</strong>`;
+                                firstRow = false;
+                            } else {
+                                row.insertCell(0).innerHTML = '';
+                            }
                             row.insertCell(1).innerHTML = tbl.charAt(0).toUpperCase() + tbl.slice(1);
                             const addCheck = (action, checked) => {
                                 const cell = row.insertCell();
@@ -815,7 +843,6 @@
                         errorDiv.textContent = err.message;
                     }
                 } else {
-                    // Request access
                     errorDiv.textContent = '';
                     submitBtn.disabled = true;
                     submitBtn.textContent = 'Submitting...';
@@ -850,12 +877,50 @@
             onAuthStateChanged(auth, async (user) => {
                 currentUser = user;
                 if (user) {
+                    // Check if user still has access
+                    const role = await getUserRole(user.uid);
+                    const isAdminEmail = user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+                    
+                    if (!isAdminEmail) {
+                        const viewers = await fbGet('viewers') || {};
+                        if (!role || role === 'revoked' || !viewers[user.uid]) {
+                            alert('Your account has been removed by the administrator.');
+                            await signOut(auth);
+                            return;
+                        }
+                    }
+
+                    // Set up real-time listener to detect if admin removes this user
+                    const userRoleRef = ref(db, `${PATHS.USER_ROLES}/${user.uid}`);
+                    const viewersRef = ref(db, `viewers/${user.uid}`);
+                    
+                    if (window._roleUnsubscribe) window._roleUnsubscribe();
+                    if (window._viewerUnsubscribe) window._viewerUnsubscribe();
+                    
+                    window._roleUnsubscribe = onValue(userRoleRef, async (snapshot) => {
+                        if (!snapshot.exists() || snapshot.val().role === 'revoked') {
+                            alert('Your access has been revoked.');
+                            await signOut(auth);
+                        }
+                    });
+                    
+                    if (!isAdminEmail) {
+                        window._viewerUnsubscribe = onValue(viewersRef, async (snapshot) => {
+                            if (!snapshot.exists()) {
+                                alert('Your account has been removed.');
+                                await signOut(auth);
+                            }
+                        });
+                    }
+
                     await loadActivityLog();
                     await loadPermissions();
                     await loadColumnsAndData();
                     await loadSnapshots();
                     renderFullApp();
                 } else {
+                    if (window._roleUnsubscribe) window._roleUnsubscribe();
+                    if (window._viewerUnsubscribe) window._viewerUnsubscribe();
                     renderAuthUI();
                 }
             });
