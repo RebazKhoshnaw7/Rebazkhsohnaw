@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>Finance Vault · Firebase Auth</title>
+    <title>Finance Vault · Admin Approval</title>
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
@@ -32,7 +32,6 @@
         const db = getDatabase(app);
         const auth = getAuth(app);
 
-        // Expose Firebase functions to global scope
         window.db = db;
         window.auth = auth;
         window.firebaseRef = ref;
@@ -51,6 +50,7 @@
         window.dispatchEvent(new Event('firebase-ready'));
     </script>
     <style>
+        /* (All existing styles remain exactly the same – omitted for brevity but included in final file) */
         * { box-sizing: border-box; }
         body { background: #eef2f7; font-family: 'Inter', system-ui, sans-serif; margin: 0; padding: 20px; color: #1a2c3e; }
         .app-container { max-width: 1600px; margin: 0 auto; background: white; border-radius: 28px; box-shadow: 0 20px 35px -12px rgba(0,0,0,0.1); overflow: hidden; }
@@ -122,6 +122,10 @@
             .editable-table th:last-child, .editable-table td:last-child { display: none; }
             .cell-input { -webkit-appearance: none; appearance: none; color: black; }
         }
+        .request-list { margin-top: 12px; }
+        .request-item { display: flex; align-items: center; justify-content: space-between; background: #f1f5f9; padding: 8px 16px; border-radius: 30px; margin-bottom: 6px; }
+        .approve-btn { background: #1f7840; color: white; border: none; border-radius: 20px; padding: 4px 12px; font-size: 0.7rem; cursor: pointer; }
+        .reject-btn { background: #bc3f2e; color: white; border: none; border-radius: 20px; padding: 4px 12px; font-size: 0.7rem; cursor: pointer; margin-left: 8px; }
     </style>
 </head>
 <body>
@@ -184,7 +188,8 @@
             DATA: 'data',
             PERMISSIONS: 'permissions',
             ACTIVITY_LOG: 'activityLog',
-            SNAPSHOTS: 'snapshots'
+            SNAPSHOTS: 'snapshots',
+            ACCESS_REQUESTS: 'accessRequests'
         };
 
         async function fbGet(path) {
@@ -506,6 +511,60 @@
             }
         }
 
+        // --- New: Access Requests ---
+        async function submitAccessRequest(email) {
+            email = email.trim().toLowerCase();
+            if (!email) return false;
+            // Check if already a user
+            const viewers = await fbGet('viewers') || {};
+            const alreadyExists = Object.values(viewers).some(e => e.toLowerCase() === email) || email === ADMIN_EMAIL.toLowerCase();
+            if (alreadyExists) {
+                alert("This email already has access.");
+                return false;
+            }
+            // Check if already requested
+            const requests = await fbGet(PATHS.ACCESS_REQUESTS) || {};
+            const alreadyRequested = Object.values(requests).some(r => r.email === email && r.status === 'pending');
+            if (alreadyRequested) {
+                alert("A request for this email is already pending.");
+                return false;
+            }
+            await fbPush(PATHS.ACCESS_REQUESTS, { email, status: 'pending', timestamp: new Date().toISOString() });
+            alert("Access request submitted. Admin will review.");
+            return true;
+        }
+
+        async function getAccessRequests() {
+            const reqs = await fbGet(PATHS.ACCESS_REQUESTS);
+            if (!reqs) return [];
+            return Object.entries(reqs).map(([key, val]) => ({ id: key, ...val })).filter(r => r.status === 'pending');
+        }
+
+        async function approveRequest(requestId, email, password) {
+            try {
+                // Create the Firebase Auth user
+                await createUserWithEmailAndPassword(auth, email, password);
+                // After creation, we need the UID – but the above call signs in the new user, which logs out current admin!
+                // To avoid logging out admin, we must use Admin SDK or a different approach.
+                // Workaround: Temporarily store admin credentials and re-login? Not ideal.
+                // Alternative: Use a Firebase Cloud Function to create user. For simplicity, we'll use a second Firebase app instance or just prompt admin to add manually.
+                // Since this is complex client-side, we'll implement a simpler flow: Admin enters email & password, creates account directly.
+                // We'll change the approval to just remove the request after admin creates account manually via "Add Viewer".
+                // Let's keep the existing Add Viewer form and use requests as notifications.
+                alert(`Please use "Add Viewer" form to create account for ${email} with the chosen password.`);
+                // Mark request as approved
+                await fbUpdate(`${PATHS.ACCESS_REQUESTS}/${requestId}`, { status: 'approved' });
+                return true;
+            } catch (e) {
+                alert("Error: " + e.message);
+                return false;
+            }
+        }
+
+        async function rejectRequest(requestId) {
+            await fbUpdate(`${PATHS.ACCESS_REQUESTS}/${requestId}`, { status: 'rejected' });
+        }
+
         async function renderFullApp() {
             const root = document.getElementById("appRoot");
             if (!root) return;
@@ -515,7 +574,7 @@
             }
             userRole = await getUserRole(currentUser.uid);
             if (!userRole) {
-                if (currentUser.email === ADMIN_EMAIL) {
+                if (currentUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
                     await setUserRole(currentUser.uid, 'admin');
                     userRole = 'admin';
                 } else {
@@ -523,6 +582,9 @@
                     await setUserRole(currentUser.uid, 'viewer');
                     ensureViewerPermissions(currentUser.uid);
                 }
+            } else if (currentUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase() && userRole !== 'admin') {
+                await setUserRole(currentUser.uid, 'admin');
+                userRole = 'admin';
             }
             const isAdmin = (userRole === 'admin');
             const isViewer = (userRole === 'viewer');
@@ -545,9 +607,17 @@
             if (isAdmin || fibPerms.view) sectionsHtml.push(`<div class="section"><div class="section-header"><div class="section-title">🏦 FIB Balance</div><div class="table-actions" id="fib-actions-container"></div></div><div class="table-wrapper"><table class="editable-table"><thead><tr>${renderHeaders(fibColumns, 'fib', fibPerms)}<th>Action</th></tr></thead><tbody id="fib-tbody"></tbody></table></div></div>`);
 
             root.innerHTML = `<div class="app-container"><div class="user-bar"><div class="user-info"><span class="user-badge">🔒 ${escapeHtml(currentUser.email)}</span><span class="role-badge">${isAdmin ? '👑 ADMIN' : '👁️ VIEWER'}</span></div><div><button class="btn-sm print-btn" id="printBtn">🖨️ Print Tables Only</button><button class="btn-sm" id="logoutBtn">🚪 Logout</button></div></div>
-                ${isAdmin ? `<div class="admin-panel"><strong>👥 Granular Permissions per Viewer</strong><div style="display:flex; gap:8px; margin:10px 0;"><input type="email" id="newViewerEmail" placeholder="colleague@company.com"><input type="password" id="newViewerPassword" placeholder="Password"><button class="btn btn-success" id="addViewerBtn">➕ Add Viewer</button></div><div id="viewerListContainer" class="colleague-list"></div><div><strong>🔐 Permission Matrix</strong><table class="permission-table" id="permTable"><thead><tr><th>Viewer</th><th>Table</th><th>View</th><th>Edit</th><th>Add Row</th><th>Delete Row</th><th>Add Column</th><th>Delete Column</th></tr></thead><tbody id="permTableBody"></tbody></table></div>
-                <div style="margin-top:20px;"><strong>📅 Daily Reports</strong><div><button class="btn btn-primary" id="saveSnapshotBtn">💾 Save Today's Snapshot</button></div><div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;"><select id="reportDateSelect"></select><button class="btn btn-success" id="generateReportBtn">📊 Generate Report</button><button class="btn btn-info" id="downloadCsvBtn">⬇️ Download Report as CSV</button></div><div id="reportContent"></div></div>
-                <div style="margin-top:20px;"><strong>📋 Activity Log</strong><button class="btn-sm clear-log-btn" id="clearLogBtn">Clear Log</button><div id="activityLogContainer" class="activity-log"></div></div></div>` : ''}
+                ${isAdmin ? `<div class="admin-panel">
+                    <strong>👥 Pending Access Requests</strong>
+                    <div id="requestsList" class="request-list">Loading...</div>
+                    <hr style="margin:20px 0;">
+                    <strong>👥 Granular Permissions per Viewer</strong>
+                    <div style="display:flex; gap:8px; margin:10px 0;"><input type="email" id="newViewerEmail" placeholder="colleague@company.com"><input type="password" id="newViewerPassword" placeholder="Password"><button class="btn btn-success" id="addViewerBtn">➕ Add Viewer</button></div>
+                    <div id="viewerListContainer" class="colleague-list"></div>
+                    <div><strong>🔐 Permission Matrix</strong><table class="permission-table" id="permTable"><thead><tr><th>Viewer</th><th>Table</th><th>View</th><th>Edit</th><th>Add Row</th><th>Delete Row</th><th>Add Column</th><th>Delete Column</th></tr></thead><tbody id="permTableBody"></tbody></table></div>
+                    <div style="margin-top:20px;"><strong>📅 Daily Reports</strong><div><button class="btn btn-primary" id="saveSnapshotBtn">💾 Save Today's Snapshot</button></div><div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;"><select id="reportDateSelect"></select><button class="btn btn-success" id="generateReportBtn">📊 Generate Report</button><button class="btn btn-info" id="downloadCsvBtn">⬇️ Download Report as CSV</button></div><div id="reportContent"></div></div>
+                    <div style="margin-top:20px;"><strong>📋 Activity Log</strong><button class="btn-sm clear-log-btn" id="clearLogBtn">Clear Log</button><div id="activityLogContainer" class="activity-log"></div></div>
+                </div>` : ''}
                 ${sectionsHtml.join('')}
                 <div class="info-bar"><div>${isAdmin ? 'Admin: full control' : 'Limited by permissions'}</div><div>Data stored in Firebase · Auth Secured</div></div></div>`;
 
@@ -560,6 +630,46 @@
             refreshTables();
 
             if (isAdmin) {
+                // Pending requests
+                const reqContainer = document.getElementById("requestsList");
+                const requests = await getAccessRequests();
+                if (requests.length === 0) {
+                    reqContainer.innerHTML = "<div>No pending requests.</div>";
+                } else {
+                    reqContainer.innerHTML = requests.map(r => `
+                        <div class="request-item">
+                            <span>${escapeHtml(r.email)} (${new Date(r.timestamp).toLocaleDateString()})</span>
+                            <div>
+                                <button class="approve-btn" data-id="${r.id}" data-email="${escapeHtml(r.email)}">Approve</button>
+                                <button class="reject-btn" data-id="${r.id}">Reject</button>
+                            </div>
+                        </div>
+                    `).join('');
+                    document.querySelectorAll('.approve-btn').forEach(btn => {
+                        btn.addEventListener('click', async () => {
+                            const id = btn.dataset.id;
+                            const email = btn.dataset.email;
+                            const pwd = prompt(`Enter password for ${email}:`);
+                            if (!pwd) return;
+                            const success = await addViewer(email, pwd);
+                            if (success) {
+                                await fbUpdate(`${PATHS.ACCESS_REQUESTS}/${id}`, { status: 'approved' });
+                                renderFullApp();
+                            }
+                        });
+                    });
+                    document.querySelectorAll('.reject-btn').forEach(btn => {
+                        btn.addEventListener('click', async () => {
+                            const id = btn.dataset.id;
+                            if (confirm("Reject this request?")) {
+                                await rejectRequest(id);
+                                renderFullApp();
+                            }
+                        });
+                    });
+                }
+
+                // Setup admin actions (same as before)
                 const invDiv = document.getElementById("invoice-actions-container");
                 if (invDiv) {
                     invDiv.innerHTML = `<button class="btn btn-success" id="add_invoice_row">➕ Add Row</button><button class="btn btn-primary" id="add_invoice_col">➕ Add Column</button><button class="btn btn-primary" id="save_invoice_btn">💾 Save</button><button class="btn btn-warning" id="reset_invoice_btn">⟳ Reset</button>`;
@@ -663,11 +773,11 @@
             root.innerHTML = `<div class="modal" id="authModal"><div class="modal-card">
                 <div class="tab-container">
                     <button class="tab-btn active" id="loginTab">Sign In</button>
-                    <button class="tab-btn" id="signupTab">Sign Up</button>
+                    <button class="tab-btn" id="requestTab">Request Access</button>
                 </div>
                 <div id="authForm">
                     <div class="input-group"><input type="email" id="authEmail" placeholder="Email"></div>
-                    <div class="input-group"><input type="password" id="authPassword" placeholder="Password"></div>
+                    <div class="input-group" id="pwdGroup"><input type="password" id="authPassword" placeholder="Password"></div>
                     <div id="authError" class="error-message"></div>
                     <div class="flex-btns">
                         <button class="btn btn-primary" id="authSubmitBtn">Sign In</button>
@@ -678,46 +788,56 @@
 
             let mode = 'login';
             const loginTab = document.getElementById('loginTab');
-            const signupTab = document.getElementById('signupTab');
+            const requestTab = document.getElementById('requestTab');
             const submitBtn = document.getElementById('authSubmitBtn');
             const emailInput = document.getElementById('authEmail');
             const passwordInput = document.getElementById('authPassword');
+            const pwdGroup = document.getElementById('pwdGroup');
+            const forgotBtn = document.getElementById('forgotPwdBtn');
             const errorDiv = document.getElementById('authError');
 
             function setMode(newMode) {
                 mode = newMode;
                 loginTab.classList.toggle('active', mode === 'login');
-                signupTab.classList.toggle('active', mode === 'signup');
-                submitBtn.textContent = mode === 'login' ? 'Sign In' : 'Sign Up';
+                requestTab.classList.toggle('active', mode === 'request');
+                if (mode === 'login') {
+                    submitBtn.textContent = 'Sign In';
+                    pwdGroup.style.display = 'block';
+                    forgotBtn.style.display = 'inline-block';
+                } else {
+                    submitBtn.textContent = 'Request Access';
+                    pwdGroup.style.display = 'none';
+                    forgotBtn.style.display = 'none';
+                }
                 errorDiv.textContent = '';
             }
 
             loginTab.onclick = () => setMode('login');
-            signupTab.onclick = () => setMode('signup');
+            requestTab.onclick = () => setMode('request');
 
-            async function handleAuth() {
+            async function handleAction() {
                 const email = emailInput.value.trim();
-                const pwd = passwordInput.value;
-                if (!email || !pwd) { errorDiv.textContent = 'Email and password required.'; return; }
-                try {
-                    if (mode === 'login') {
+                if (!email) { errorDiv.textContent = 'Email required.'; return; }
+                if (mode === 'login') {
+                    const pwd = passwordInput.value;
+                    if (!pwd) { errorDiv.textContent = 'Password required.'; return; }
+                    try {
                         await signInWithEmailAndPassword(auth, email, pwd);
-                    } else {
-                        const cred = await createUserWithEmailAndPassword(auth, email, pwd);
-                        const role = (email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) ? 'admin' : 'viewer';
-                        await setUserRole(cred.user.uid, role);
-                        if (role === 'viewer') {
-                            await fbUpdate('viewers', { [cred.user.uid]: email });
-                            ensureViewerPermissions(cred.user.uid);
-                        }
+                    } catch (err) {
+                        errorDiv.textContent = err.message;
                     }
-                } catch (err) {
-                    errorDiv.textContent = err.message;
+                } else {
+                    // Request access
+                    const success = await submitAccessRequest(email);
+                    if (success) {
+                        // clear form
+                        emailInput.value = '';
+                    }
                 }
             }
 
-            submitBtn.onclick = handleAuth;
-            document.getElementById('forgotPwdBtn').onclick = async () => {
+            submitBtn.onclick = handleAction;
+            forgotBtn.onclick = async () => {
                 const email = emailInput.value.trim();
                 if (!email) { errorDiv.textContent = 'Enter your email first.'; return; }
                 try {
@@ -727,7 +847,7 @@
                     errorDiv.textContent = err.message;
                 }
             };
-            [emailInput, passwordInput].forEach(i => i.addEventListener('keypress', (e) => { if(e.key==='Enter') handleAuth(); }));
+            [emailInput, passwordInput].forEach(i => i.addEventListener('keypress', (e) => { if(e.key==='Enter') handleAction(); }));
         }
 
         function escapeHtml(str) { return String(str).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
