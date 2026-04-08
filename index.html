@@ -20,6 +20,7 @@
         const firebaseConfig = {
             apiKey: "AIzaSyCTEwQr-6z4y8JhkDPsjd6k0M-7J8cdnCg",
             authDomain: "financerebaz.firebaseapp.com",
+            databaseURL: "https://financerebaz-default-rtdb.firebaseio.com",   // Ensure this is your actual database URL
             projectId: "financerebaz",
             storageBucket: "financerebaz.firebasestorage.app",
             messagingSenderId: "476412084259",
@@ -31,6 +32,7 @@
         const db = getDatabase(app);
         const auth = getAuth(app);
 
+        // Expose Firebase functions to global scope
         window.db = db;
         window.auth = auth;
         window.firebaseRef = ref;
@@ -40,11 +42,12 @@
         window.firebasePush = push;
         window.firebaseChild = child;
         window.firebaseOnValue = onValue;
+        window.onAuthStateChanged = onAuthStateChanged;   // ✅ Fixed missing export
 
         window.dispatchEvent(new Event('firebase-ready'));
     </script>
     <style>
-        /* ... Keep all existing styles exactly as before ... */
+        /* All existing styles remain unchanged */
         * { box-sizing: border-box; }
         body { background: #eef2f7; font-family: 'Inter', system-ui, sans-serif; margin: 0; padding: 20px; color: #1a2c3e; }
         .app-container { max-width: 1600px; margin: 0 auto; background: white; border-radius: 28px; box-shadow: 0 20px 35px -12px rgba(0,0,0,0.1); overflow: hidden; }
@@ -98,6 +101,11 @@
         .report-container { background: #ffffff; border-radius: 16px; padding: 16px; margin-top: 16px; border: 1px solid #e2e8f0; }
         .remove-col-btn { background: none; border: none; color: #bc3f2e; cursor: pointer; font-size: 0.7rem; margin-left: 8px; padding: 2px 6px; border-radius: 20px; }
         .remove-col-btn:hover { background: #fff0f0; }
+        .error-message { color: #bc3f2e; font-size: 0.8rem; margin-top: 4px; }
+        .tab-container { display: flex; gap: 8px; margin-bottom: 16px; }
+        .tab-btn { background: none; border: none; padding: 8px 16px; cursor: pointer; border-bottom: 2px solid transparent; }
+        .tab-btn.active { border-bottom-color: #1f5f8e; font-weight: 600; }
+        .loading-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.9); display:flex; align-items:center; justify-content:center; z-index:9999; }
         @media print {
             body { background: white; padding: 0; margin: 0; }
             .user-bar, .admin-panel, .info-bar, .modal, .btn-sm, .print-btn, #logoutBtn, .table-actions, .delete-btn, .action-cell, .remove-col-btn, .section-header .table-actions, .section-header .btn, #activityLogContainer, .clear-log-btn, #reportContent, #reportDateSelect, #generateReportBtn, #saveSnapshotBtn, .permission-table, #permTable, .colleague-list, .remove-colleague, .reset-pwd-btn { display: none !important; }
@@ -111,18 +119,13 @@
             .editable-table th:last-child, .editable-table td:last-child { display: none; }
             .cell-input { -webkit-appearance: none; appearance: none; color: black; }
         }
-        .loading-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.9); display:flex; align-items:center; justify-content:center; z-index:9999; }
-        .error-message { color: #bc3f2e; font-size: 0.8rem; margin-top: 4px; }
-        .tab-container { display: flex; gap: 8px; margin-bottom: 16px; }
-        .tab-btn { background: none; border: none; padding: 8px 16px; cursor: pointer; border-bottom: 2px solid transparent; }
-        .tab-btn.active { border-bottom-color: #1f5f8e; font-weight: 600; }
     </style>
 </head>
 <body>
 <div id="appRoot">Loading Firebase...</div>
 <script>
     (function() {
-        let db, auth, ref, set, get, update, push, child, onValue;
+        let db, auth, ref, set, get, update, push, child, onValue, onAuthStateChanged;
         let firebaseReady = false;
 
         window.addEventListener('firebase-ready', () => {
@@ -135,6 +138,7 @@
             push = window.firebasePush;
             child = window.firebaseChild;
             onValue = window.firebaseOnValue;
+            onAuthStateChanged = window.onAuthStateChanged;
             firebaseReady = true;
             bootstrap();
         });
@@ -160,14 +164,12 @@
         let activityLog = [];
         const MAX_LOG_ENTRIES = 200;
         let snapshots = {};
-        let currentUser = null; // Firebase user object
-        let userRole = null; // 'admin' or 'viewer'
+        let currentUser = null;
+        let userRole = null;
         const ADMIN_EMAIL = "Rebaz.abdullah@Fast-pay.iq";
 
-        // Helper: simple hash (no longer used for passwords, kept for security answers)
         function simpleHash(str) { let h = 0; for (let i = 0; i < str.length; i++) { h = ((h << 5) - h) + str.charCodeAt(i); h |= 0; } return h.toString(16); }
 
-        // -------------------- FIREBASE PATHS --------------------
         const PATHS = {
             USER_ROLES: 'userRoles',
             COLUMNS: 'columns',
@@ -177,7 +179,6 @@
             SNAPSHOTS: 'snapshots'
         };
 
-        // -------------------- ASYNC FIREBASE OPERATIONS --------------------
         async function fbGet(path) {
             const snapshot = await get(ref(db, path));
             return snapshot.exists() ? snapshot.val() : null;
@@ -194,7 +195,6 @@
             return newRef.key;
         }
 
-        // -------------------- LOAD / SAVE FUNCTIONS --------------------
         async function loadColumnsAndData() {
             try {
                 const colsData = await fbGet(PATHS.COLUMNS);
@@ -207,7 +207,6 @@
                 accountsData = (data?.accounts) ? data.accounts : [];
                 fibData = (data?.fib) ? data.fib : [];
 
-                // Initialize defaults if empty
                 if (invoiceData.length === 0) {
                     const defaultRows = [
                         { area: "Erbil To Baghdad", invoiceNo: "12888407", submissionDate: "29-Mar-26", daysOutstand: "8", company: "Mintroute", amount: "IQD 1,450,000,000", exchangeRate: "", bankStatus: "N/A", topUpStatus: "Not Received" },
@@ -259,7 +258,6 @@
             await saveDataToStorage();
         }
 
-        // -------------------- USER ROLES (Firebase Auth + DB) --------------------
         async function getUserRole(uid) {
             const snapshot = await get(ref(db, `${PATHS.USER_ROLES}/${uid}`));
             return snapshot.exists() ? snapshot.val().role : null;
@@ -269,13 +267,6 @@
             await set(ref(db, `${PATHS.USER_ROLES}/${uid}`), { role, email: currentUser?.email || '' });
         }
 
-        async function ensureAdminExists() {
-            // This will run after auth state is known. We can't create a user without credentials.
-            // The admin user must be created manually first time via sign-up or via console.
-            // For simplicity, we can let the admin sign up with the admin email, then we set role to admin.
-        }
-
-        // -------------------- PERMISSIONS (keyed by uid) --------------------
         function getDefaultTablePerms() { return { view: true, addRow: false, deleteRow: false, edit: true, addColumn: false, deleteColumn: false }; }
 
         async function loadPermissions() {
@@ -303,7 +294,6 @@
             renderFullApp();
         }
 
-        // -------------------- ACTIVITY LOG --------------------
         async function loadActivityLog() {
             const log = await fbGet(PATHS.ACTIVITY_LOG);
             activityLog = log ? (Array.isArray(log) ? log : Object.values(log)) : [];
@@ -329,7 +319,6 @@
             if (confirm("Clear all logs?")) { activityLog = []; await saveActivityLog(); renderActivityLog(); await logActivity(currentUser?.email, "Cleared activity log", ""); }
         }
 
-        // -------------------- SNAPSHOTS (unchanged) --------------------
         async function loadSnapshots() {
             const snaps = await fbGet(PATHS.SNAPSHOTS);
             snapshots = snaps || {};
@@ -403,7 +392,6 @@
             alert("Report downloaded as CSV file.");
         }
 
-        // -------------------- DYNAMIC TABLE FUNCTIONS (unchanged) --------------------
         async function addColumnToTable(tableName, columnLabel) {
             if (!columnLabel || columnLabel.trim() === "") return false;
             const key = "col_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5);
@@ -475,9 +463,7 @@
             });
         }
 
-        // -------------------- VIEWER MANAGEMENT (uses Firebase Auth) --------------------
         async function listViewers() {
-            // Since Firebase Auth doesn't list users client-side, we store viewer UIDs in a separate node.
             const viewersNode = await fbGet('viewers');
             return viewersNode ? Object.keys(viewersNode) : [];
         }
@@ -487,7 +473,6 @@
                 const userCredential = await createUserWithEmailAndPassword(auth, email, password);
                 const uid = userCredential.user.uid;
                 await setUserRole(uid, 'viewer');
-                // Add to viewers list
                 await fbUpdate('viewers', { [uid]: email });
                 ensureViewerPermissions(uid);
                 await logActivity(currentUser?.email, "Added viewer", email);
@@ -501,15 +486,10 @@
         async function removeViewer(uid, email) {
             if (email === ADMIN_EMAIL) return false;
             try {
-                // Delete from viewers list
                 await fbUpdate('viewers', { [uid]: null });
-                // Delete permissions
                 delete viewerPermissions[uid];
                 await savePermissions();
-                // Delete user role
                 await set(ref(db, `${PATHS.USER_ROLES}/${uid}`), null);
-                // Note: Cannot delete Firebase Auth user from client SDK (requires admin SDK). 
-                // The user account remains in Auth but won't have role/permissions.
                 await logActivity(currentUser?.email, "Removed viewer", email);
                 return true;
             } catch (e) {
@@ -518,7 +498,6 @@
             }
         }
 
-        // -------------------- MAIN RENDER --------------------
         async function renderFullApp() {
             const root = document.getElementById("appRoot");
             if (!root) return;
@@ -526,10 +505,8 @@
                 renderAuthUI();
                 return;
             }
-            // Ensure role loaded
             userRole = await getUserRole(currentUser.uid);
             if (!userRole) {
-                // If no role, maybe set as viewer by default? Or prompt admin setup.
                 if (currentUser.email === ADMIN_EMAIL) {
                     await setUserRole(currentUser.uid, 'admin');
                     userRole = 'admin';
@@ -575,7 +552,6 @@
             refreshTables();
 
             if (isAdmin) {
-                // Setup admin actions (same as before but async)
                 const invDiv = document.getElementById("invoice-actions-container");
                 if (invDiv) {
                     invDiv.innerHTML = `<button class="btn btn-success" id="add_invoice_row">➕ Add Row</button><button class="btn btn-primary" id="add_invoice_col">➕ Add Column</button><button class="btn btn-primary" id="save_invoice_btn">💾 Save</button><button class="btn btn-warning" id="reset_invoice_btn">⟳ Reset</button>`;
@@ -601,7 +577,6 @@
                     document.getElementById("reset_fib_btn")?.addEventListener("click", async () => { if(confirm("Reset FIB?")){ fibColumns = JSON.parse(JSON.stringify(DEFAULT_FIB_COLUMNS)); fibData = []; await saveAllToStorage(); await loadColumnsAndData(); renderFullApp(); await logActivity(currentUser.email,"Reset FIB",""); } });
                 }
 
-                // Viewer management
                 const viewers = await listViewers();
                 const container = document.getElementById("viewerListContainer");
                 if (container) {
@@ -632,7 +607,6 @@
                     } else alert("Enter email and password.");
                 });
 
-                // Permission matrix
                 const permBody = document.getElementById("permTableBody");
                 if (permBody) {
                     permBody.innerHTML = '';
@@ -672,7 +646,6 @@
             document.getElementById("logoutBtn")?.addEventListener("click", async () => {
                 await logActivity(currentUser.email, "Logged out", "");
                 await signOut(auth);
-                // currentUser will become null via onAuthStateChanged
             });
             document.getElementById("printBtn")?.addEventListener("click", () => { logActivity(currentUser.email,"Printed dashboard",""); window.print(); });
         }
@@ -721,18 +694,14 @@
                 try {
                     if (mode === 'login') {
                         await signInWithEmailAndPassword(auth, email, pwd);
-                        // onAuthStateChanged will handle the rest
                     } else {
-                        // Sign Up
                         const cred = await createUserWithEmailAndPassword(auth, email, pwd);
-                        // Assign role: if email is admin email, set as admin, else viewer
                         const role = (email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) ? 'admin' : 'viewer';
                         await setUserRole(cred.user.uid, role);
                         if (role === 'viewer') {
                             await fbUpdate('viewers', { [cred.user.uid]: email });
                             ensureViewerPermissions(cred.user.uid);
                         }
-                        // Auto sign-in handled by onAuthStateChanged
                     }
                 } catch (err) {
                     errorDiv.textContent = err.message;
@@ -750,22 +719,17 @@
                     errorDiv.textContent = err.message;
                 }
             };
-            // Allow enter key
             [emailInput, passwordInput].forEach(i => i.addEventListener('keypress', (e) => { if(e.key==='Enter') handleAuth(); }));
         }
 
         function escapeHtml(str) { return String(str).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
 
-        // -------------------- BOOTSTRAP --------------------
         async function bootstrap() {
             if (!firebaseReady) return;
             document.getElementById('appRoot').innerHTML = '<div class="loading-overlay"><div>Loading data from Firebase...</div></div>';
-
-            // Set up auth state observer
             onAuthStateChanged(auth, async (user) => {
                 currentUser = user;
                 if (user) {
-                    // Load data
                     await loadActivityLog();
                     await loadPermissions();
                     await loadColumnsAndData();
