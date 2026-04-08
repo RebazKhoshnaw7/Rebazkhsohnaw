@@ -280,7 +280,7 @@
             await set(ref(db, `${PATHS.USER_ROLES}/${uid}`), { role, email: currentUser?.email || '' });
         }
 
-        function getDefaultTablePerms() { return { view: true, addRow: false, deleteRow: false, edit: true, addColumn: false, deleteColumn: false }; }
+        function getDefaultTablePerms() { return { view: true, addRow: false, deleteRow: false, edit: false, addColumn: false, deleteColumn: false }; }
 
         async function loadPermissions() {
             const perms = await fbGet(PATHS.PERMISSIONS);
