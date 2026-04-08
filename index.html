@@ -32,6 +32,7 @@
         const db = getDatabase(app);
         const auth = getAuth(app);
 
+        // Expose to global
         window.db = db;
         window.auth = auth;
         window.firebaseRef = ref;
@@ -50,7 +51,6 @@
         window.dispatchEvent(new Event('firebase-ready'));
     </script>
     <style>
-        /* (All existing styles remain exactly the same – omitted for brevity but included in final file) */
         * { box-sizing: border-box; }
         body { background: #eef2f7; font-family: 'Inter', system-ui, sans-serif; margin: 0; padding: 20px; color: #1a2c3e; }
         .app-container { max-width: 1600px; margin: 0 auto; background: white; border-radius: 28px; box-shadow: 0 20px 35px -12px rgba(0,0,0,0.1); overflow: hidden; }
@@ -109,6 +109,10 @@
         .tab-btn { background: none; border: none; padding: 8px 16px; cursor: pointer; border-bottom: 2px solid transparent; }
         .tab-btn.active { border-bottom-color: #1f5f8e; font-weight: 600; }
         .loading-overlay { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.9); display:flex; align-items:center; justify-content:center; z-index:9999; }
+        .request-list { margin-top: 12px; }
+        .request-item { display: flex; align-items: center; justify-content: space-between; background: #f1f5f9; padding: 8px 16px; border-radius: 30px; margin-bottom: 6px; }
+        .approve-btn { background: #1f7840; color: white; border: none; border-radius: 20px; padding: 4px 12px; font-size: 0.7rem; cursor: pointer; margin-right: 8px; }
+        .reject-btn { background: #bc3f2e; color: white; border: none; border-radius: 20px; padding: 4px 12px; font-size: 0.7rem; cursor: pointer; }
         @media print {
             body { background: white; padding: 0; margin: 0; }
             .user-bar, .admin-panel, .info-bar, .modal, .btn-sm, .print-btn, #logoutBtn, .table-actions, .delete-btn, .action-cell, .remove-col-btn, .section-header .table-actions, .section-header .btn, #activityLogContainer, .clear-log-btn, #reportContent, #reportDateSelect, #generateReportBtn, #saveSnapshotBtn, .permission-table, #permTable, .colleague-list, .remove-colleague, .reset-pwd-btn { display: none !important; }
@@ -122,10 +126,6 @@
             .editable-table th:last-child, .editable-table td:last-child { display: none; }
             .cell-input { -webkit-appearance: none; appearance: none; color: black; }
         }
-        .request-list { margin-top: 12px; }
-        .request-item { display: flex; align-items: center; justify-content: space-between; background: #f1f5f9; padding: 8px 16px; border-radius: 30px; margin-bottom: 6px; }
-        .approve-btn { background: #1f7840; color: white; border: none; border-radius: 20px; padding: 4px 12px; font-size: 0.7rem; cursor: pointer; }
-        .reject-btn { background: #bc3f2e; color: white; border: none; border-radius: 20px; padding: 4px 12px; font-size: 0.7rem; cursor: pointer; margin-left: 8px; }
     </style>
 </head>
 <body>
@@ -511,54 +511,42 @@
             }
         }
 
-        // --- New: Access Requests ---
+        // --- Access Requests ---
         async function submitAccessRequest(email) {
             email = email.trim().toLowerCase();
-            if (!email) return false;
-            // Check if already a user
-            const viewers = await fbGet('viewers') || {};
-            const alreadyExists = Object.values(viewers).some(e => e.toLowerCase() === email) || email === ADMIN_EMAIL.toLowerCase();
-            if (alreadyExists) {
-                alert("This email already has access.");
+            if (!email) {
+                alert("Please enter an email address.");
                 return false;
             }
-            // Check if already requested
-            const requests = await fbGet(PATHS.ACCESS_REQUESTS) || {};
-            const alreadyRequested = Object.values(requests).some(r => r.email === email && r.status === 'pending');
-            if (alreadyRequested) {
-                alert("A request for this email is already pending.");
+            try {
+                // Check if already a user
+                const viewers = await fbGet('viewers') || {};
+                const alreadyExists = Object.values(viewers).some(e => e.toLowerCase() === email) || email === ADMIN_EMAIL.toLowerCase();
+                if (alreadyExists) {
+                    alert("This email already has access. Please sign in.");
+                    return false;
+                }
+                // Check if already requested
+                const requests = await fbGet(PATHS.ACCESS_REQUESTS) || {};
+                const alreadyRequested = Object.values(requests).some(r => r.email === email && r.status === 'pending');
+                if (alreadyRequested) {
+                    alert("A request for this email is already pending approval.");
+                    return false;
+                }
+                await fbPush(PATHS.ACCESS_REQUESTS, { email, status: 'pending', timestamp: new Date().toISOString() });
+                alert("✅ Access request submitted! Admin will review and approve.");
+                return true;
+            } catch (error) {
+                console.error("Request error:", error);
+                alert("Error submitting request: " + error.message);
                 return false;
             }
-            await fbPush(PATHS.ACCESS_REQUESTS, { email, status: 'pending', timestamp: new Date().toISOString() });
-            alert("Access request submitted. Admin will review.");
-            return true;
         }
 
         async function getAccessRequests() {
             const reqs = await fbGet(PATHS.ACCESS_REQUESTS);
             if (!reqs) return [];
             return Object.entries(reqs).map(([key, val]) => ({ id: key, ...val })).filter(r => r.status === 'pending');
-        }
-
-        async function approveRequest(requestId, email, password) {
-            try {
-                // Create the Firebase Auth user
-                await createUserWithEmailAndPassword(auth, email, password);
-                // After creation, we need the UID – but the above call signs in the new user, which logs out current admin!
-                // To avoid logging out admin, we must use Admin SDK or a different approach.
-                // Workaround: Temporarily store admin credentials and re-login? Not ideal.
-                // Alternative: Use a Firebase Cloud Function to create user. For simplicity, we'll use a second Firebase app instance or just prompt admin to add manually.
-                // Since this is complex client-side, we'll implement a simpler flow: Admin enters email & password, creates account directly.
-                // We'll change the approval to just remove the request after admin creates account manually via "Add Viewer".
-                // Let's keep the existing Add Viewer form and use requests as notifications.
-                alert(`Please use "Add Viewer" form to create account for ${email} with the chosen password.`);
-                // Mark request as approved
-                await fbUpdate(`${PATHS.ACCESS_REQUESTS}/${requestId}`, { status: 'approved' });
-                return true;
-            } catch (e) {
-                alert("Error: " + e.message);
-                return false;
-            }
         }
 
         async function rejectRequest(requestId) {
@@ -669,7 +657,7 @@
                     });
                 }
 
-                // Setup admin actions (same as before)
+                // Setup admin actions
                 const invDiv = document.getElementById("invoice-actions-container");
                 if (invDiv) {
                     invDiv.innerHTML = `<button class="btn btn-success" id="add_invoice_row">➕ Add Row</button><button class="btn btn-primary" id="add_invoice_col">➕ Add Column</button><button class="btn btn-primary" id="save_invoice_btn">💾 Save</button><button class="btn btn-warning" id="reset_invoice_btn">⟳ Reset</button>`;
@@ -828,9 +816,13 @@
                     }
                 } else {
                     // Request access
+                    errorDiv.textContent = '';
+                    submitBtn.disabled = true;
+                    submitBtn.textContent = 'Submitting...';
                     const success = await submitAccessRequest(email);
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Request Access';
                     if (success) {
-                        // clear form
                         emailInput.value = '';
                     }
                 }
