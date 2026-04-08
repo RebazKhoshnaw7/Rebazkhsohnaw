@@ -20,7 +20,7 @@
         const firebaseConfig = {
             apiKey: "AIzaSyCTEwQr-6z4y8JhkDPsjd6k0M-7J8cdnCg",
             authDomain: "financerebaz.firebaseapp.com",
-            databaseURL: "https://financerebaz-default-rtdb.firebaseio.com",   // Ensure this is your actual database URL
+            databaseURL: "https://financerebaz-default-rtdb.firebaseio.com",
             projectId: "financerebaz",
             storageBucket: "financerebaz.firebasestorage.app",
             messagingSenderId: "476412084259",
@@ -42,12 +42,15 @@
         window.firebasePush = push;
         window.firebaseChild = child;
         window.firebaseOnValue = onValue;
-        window.onAuthStateChanged = onAuthStateChanged;   // ✅ Fixed missing export
+        window.onAuthStateChanged = onAuthStateChanged;
+        window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+        window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+        window.signOut = signOut;
+        window.sendPasswordResetEmail = sendPasswordResetEmail;
 
         window.dispatchEvent(new Event('firebase-ready'));
     </script>
     <style>
-        /* All existing styles remain unchanged */
         * { box-sizing: border-box; }
         body { background: #eef2f7; font-family: 'Inter', system-ui, sans-serif; margin: 0; padding: 20px; color: #1a2c3e; }
         .app-container { max-width: 1600px; margin: 0 auto; background: white; border-radius: 28px; box-shadow: 0 20px 35px -12px rgba(0,0,0,0.1); overflow: hidden; }
@@ -125,7 +128,8 @@
 <div id="appRoot">Loading Firebase...</div>
 <script>
     (function() {
-        let db, auth, ref, set, get, update, push, child, onValue, onAuthStateChanged;
+        let db, auth, ref, set, get, update, push, child, onValue, onAuthStateChanged,
+            signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail;
         let firebaseReady = false;
 
         window.addEventListener('firebase-ready', () => {
@@ -139,6 +143,10 @@
             child = window.firebaseChild;
             onValue = window.firebaseOnValue;
             onAuthStateChanged = window.onAuthStateChanged;
+            signInWithEmailAndPassword = window.signInWithEmailAndPassword;
+            createUserWithEmailAndPassword = window.createUserWithEmailAndPassword;
+            signOut = window.signOut;
+            sendPasswordResetEmail = window.sendPasswordResetEmail;
             firebaseReady = true;
             bootstrap();
         });
@@ -160,7 +168,7 @@
         ];
 
         let invoiceData = [], accountsData = [], fibData = [];
-        let viewerPermissions = {}; // keyed by uid
+        let viewerPermissions = {};
         let activityLog = [];
         const MAX_LOG_ENTRIES = 200;
         let snapshots = {};
