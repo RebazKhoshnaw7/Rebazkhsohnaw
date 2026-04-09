@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>Finance Vault · Drag Permissions · Responsive</title>
-    <!-- SortableJS for drag & drop -->
+    <title>Finance Vault · Drag Fixed</title>
+    <!-- SortableJS -->
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     <!-- Firebase SDKs -->
     <script type="module">
@@ -69,9 +69,7 @@
             overflow: hidden;
         }
         @media (min-width: 768px) {
-            body {
-                padding: 20px;
-            }
+            body { padding: 20px; }
             .app-container {
                 max-width: 1600px;
                 border-radius: 28px;
@@ -80,32 +78,14 @@
             }
         }
         @media (max-width: 767px) {
-            .section {
-                margin: 16px 12px 24px 12px;
-            }
-            .section-header {
-                padding: 12px 16px;
-            }
-            .table-wrapper {
-                padding: 12px 12px;
-            }
-            .user-bar {
-                padding: 12px 16px;
-            }
-            .admin-panel {
-                margin: 12px 12px;
-                padding: 12px;
-            }
-            .info-bar {
-                padding: 12px 16px;
-            }
-            .admin-tabs {
-                flex-wrap: wrap;
-            }
-            .admin-tab {
-                font-size: 0.8rem;
-                padding: 8px 12px;
-            }
+            .section { margin: 16px 12px 24px 12px; }
+            .section-header { padding: 12px 16px; }
+            .table-wrapper { padding: 12px 12px; }
+            .user-bar { padding: 12px 16px; }
+            .admin-panel { margin: 12px 12px; padding: 12px; }
+            .info-bar { padding: 12px 16px; }
+            .admin-tabs { flex-wrap: wrap; }
+            .admin-tab { font-size: 0.8rem; padding: 8px 12px; }
         }
 
         .user-bar { background: #f8fafd; padding: 12px 24px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; gap: 15px; }
@@ -136,14 +116,13 @@
         .delete-btn:hover:not(:disabled) { background: #fff0f0; color: #d9534f; }
         .delete-btn:disabled { opacity: 0.4; cursor: not-allowed; }
         .action-cell { text-align: center; width: 70px; }
-        .drag-handle { cursor: grab; margin-right: 6px; opacity: 0.5; font-size: 1.2rem; user-select: none; text-align: center; width: 30px; }
+        .drag-handle { cursor: grab; opacity: 0.6; font-size: 1.2rem; user-select: none; text-align: center; width: 30px; }
         .drag-handle:active { cursor: grabbing; }
         .info-bar { padding: 12px 24px; background: #fafcff; border-top: 1px solid #eef2f8; font-size: 0.75rem; display: flex; justify-content: space-between; flex-wrap: wrap; }
         .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
         .modal-card { background: white; max-width: 600px; width: 95%; border-radius: 28px; padding: 24px; box-shadow: 0 20px 35px rgba(0,0,0,0.2); }
         .input-group { margin: 16px 0; }
         .input-group input, .input-group select { width: 100%; padding: 12px; border-radius: 20px; border: 1px solid #ccc; }
-        .checkbox-group { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
         .admin-panel { background: #fef9e6; border-radius: 20px; margin: 12px 24px; padding: 16px; border: 1px solid #ffe2b5; }
         .admin-tabs { display: flex; gap: 4px; border-bottom: 2px solid #e2e8f0; margin-bottom: 16px; flex-wrap: wrap; }
         .admin-tab { background: none; border: none; padding: 10px 20px; font-size: 0.9rem; font-weight: 500; color: #64748b; cursor: pointer; border-radius: 8px 8px 0 0; position: relative; transition: all 0.2s; }
@@ -156,10 +135,9 @@
         .colleague-tag { background: white; border-radius: 30px; padding: 4px 12px; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 8px; border: 1px solid #dcdcdc; }
         .remove-colleague { background: none; border: none; cursor: pointer; color: #bc3f2e; font-weight: bold; }
         .permission-table, .report-summary { margin-top: 16px; border-collapse: collapse; width: 100%; font-size: 0.7rem; }
-        .permission-table th, .permission-table td, .report-summary th, .report-summary td { border: 1px solid #e2e8f0; padding: 6px; text-align: left; vertical-align: top; }
+        .permission-table th, .permission-table td { border: 1px solid #e2e8f0; padding: 6px; text-align: left; vertical-align: top; }
         .permission-table th { background: #f1f5f9; font-weight: 600; }
         .perm-checkbox { transform: scale(0.9); margin: 0; }
-        .reset-pwd-btn { background: #fff1df; border: none; border-radius: 20px; padding: 4px 8px; font-size: 0.7rem; cursor: pointer; }
         .activity-log { max-height: 300px; overflow-y: auto; background: #fafcff; border: 1px solid #e2e8f0; border-radius: 16px; margin-top: 16px; font-size: 0.7rem; }
         .log-entry { padding: 8px 12px; border-bottom: 1px solid #edf2f7; font-family: monospace; display: flex; gap: 12px; flex-wrap: wrap; }
         .log-time { color: #5b6e8c; width: 140px; flex-shrink: 0; }
@@ -189,7 +167,6 @@
             .editable-table th, .editable-table td { border: 1px solid #999 !important; padding: 6px 4px; }
             .cell-input { border: none !important; background: transparent !important; padding: 0 !important; font-size: 0.75rem; box-shadow: none; font-family: inherit; }
             .editable-table th:last-child, .editable-table td:last-child { display: none; }
-            .cell-input { -webkit-appearance: none; appearance: none; color: black; }
             .drag-handle { display: none; }
         }
     </style>
@@ -258,8 +235,6 @@
             return new Date(isoString).toLocaleDateString('en-IQ', { timeZone: 'Asia/Baghdad' });
         }
 
-        function simpleHash(str) { let h = 0; for (let i = 0; i < str.length; i++) { h = ((h << 5) - h) + str.charCodeAt(i); h |= 0; } return h.toString(16); }
-
         const PATHS = {
             USER_ROLES: 'userRoles',
             COLUMNS: 'columns',
@@ -274,12 +249,8 @@
             const snapshot = await get(ref(db, path));
             return snapshot.exists() ? snapshot.val() : null;
         }
-        async function fbSet(path, data) {
-            await set(ref(db, path), data);
-        }
-        async function fbUpdate(path, data) {
-            await update(ref(db, path), data);
-        }
+        async function fbSet(path, data) { await set(ref(db, path), data); }
+        async function fbUpdate(path, data) { await update(ref(db, path), data); }
         async function fbPush(path, data) {
             const newRef = push(ref(db, path));
             await set(newRef, data);
@@ -331,18 +302,10 @@
         }
 
         async function saveColumnsToStorage() {
-            await fbUpdate(PATHS.COLUMNS, {
-                invoice: invoiceColumns,
-                accounts: accountsColumns,
-                fib: fibColumns
-            });
+            await fbUpdate(PATHS.COLUMNS, { invoice: invoiceColumns, accounts: accountsColumns, fib: fibColumns });
         }
         async function saveDataToStorage() {
-            await fbUpdate(PATHS.DATA, {
-                invoice: invoiceData,
-                accounts: accountsData,
-                fib: fibData
-            });
+            await fbUpdate(PATHS.DATA, { invoice: invoiceData, accounts: accountsData, fib: fibData });
         }
         async function saveAllToStorage() {
             await saveColumnsToStorage();
@@ -353,52 +316,31 @@
             const snapshot = await get(ref(db, `${PATHS.USER_ROLES}/${uid}`));
             return snapshot.exists() ? snapshot.val().role : null;
         }
-
         async function setUserRole(uid, role) {
             await set(ref(db, `${PATHS.USER_ROLES}/${uid}`), { role, email: currentUser?.email || '' });
         }
 
-        // Default table permissions (including drag)
         function getDefaultTablePerms() { 
-            return { 
-                view: true, 
-                edit: false,
-                addRow: false, 
-                deleteRow: false, 
-                addColumn: false, 
-                deleteColumn: false,
-                dragRows: false,      // NEW
-                dragColumns: false     // NEW
-            }; 
+            return { view: true, edit: false, addRow: false, deleteRow: false, addColumn: false, deleteColumn: false, dragRows: false, dragColumns: false }; 
         }
         function getDefaultViewerPermissions() {
-            return {
-                invoice: getDefaultTablePerms(),
-                accounts: getDefaultTablePerms(),
-                fib: getDefaultTablePerms()
-            };
+            return { invoice: getDefaultTablePerms(), accounts: getDefaultTablePerms(), fib: getDefaultTablePerms() };
         }
 
         async function loadPermissions() {
             const perms = await fbGet(PATHS.PERMISSIONS);
             viewerPermissions = perms || {};
-            // Ensure all existing permissions have the new fields
             Object.keys(viewerPermissions).forEach(uid => {
-                const userPerms = viewerPermissions[uid];
-                ['invoice', 'accounts', 'fib'].forEach(table => {
-                    if (userPerms[table]) {
-                        if (userPerms[table].dragRows === undefined) userPerms[table].dragRows = false;
-                        if (userPerms[table].dragColumns === undefined) userPerms[table].dragColumns = false;
+                ['invoice', 'accounts', 'fib'].forEach(tbl => {
+                    if (viewerPermissions[uid][tbl]) {
+                        if (viewerPermissions[uid][tbl].dragRows === undefined) viewerPermissions[uid][tbl].dragRows = false;
+                        if (viewerPermissions[uid][tbl].dragColumns === undefined) viewerPermissions[uid][tbl].dragColumns = false;
                     }
                 });
             });
             await savePermissions();
         }
-
-        async function savePermissions() {
-            await fbSet(PATHS.PERMISSIONS, viewerPermissions);
-        }
-
+        async function savePermissions() { await fbSet(PATHS.PERMISSIONS, viewerPermissions); }
         function ensureViewerPermissions(uid) {
             if (!viewerPermissions[uid]) {
                 viewerPermissions[uid] = getDefaultViewerPermissions();
@@ -408,7 +350,6 @@
                 if (!perms.invoice) perms.invoice = getDefaultTablePerms();
                 if (!perms.accounts) perms.accounts = getDefaultTablePerms();
                 if (!perms.fib) perms.fib = getDefaultTablePerms();
-                // Ensure drag fields exist
                 ['invoice', 'accounts', 'fib'].forEach(tbl => {
                     if (perms[tbl]) {
                         if (perms[tbl].dragRows === undefined) perms[tbl].dragRows = false;
@@ -551,54 +492,58 @@
             return true;
         }
 
-        function initDraggableTable(tableId, dataArray, columnsArray, saveCallback, tableName, canDragRows, canDragColumns) {
+        // ---------- FIXED DRAG & DROP ----------
+        function initDraggableTable(tableId, dataArray, columnsArray, tableName, canDragRows, canDragColumns) {
             const table = document.getElementById(tableId);
             if (!table) return;
             const tbody = table.querySelector('tbody');
             const theadRow = table.querySelector('thead tr');
             if (!tbody || !theadRow) return;
 
-            // Rows dragging
-            if (canDragRows && tbody) {
-                new Sortable(tbody, {
+            // Clean up previous instances
+            if (tbody._sortable) tbody._sortable.destroy();
+            if (theadRow._sortable) theadRow._sortable.destroy();
+
+            if (canDragRows) {
+                tbody._sortable = new Sortable(tbody, {
                     animation: 150,
                     handle: '.drag-handle',
+                    draggable: 'tr',
                     ghostClass: 'sortable-ghost',
                     onEnd: async function(evt) {
-                        const movedItem = dataArray.splice(evt.oldIndex, 1)[0];
-                        dataArray.splice(evt.newIndex, 0, movedItem);
+                        const oldIndex = evt.oldIndex;
+                        const newIndex = evt.newIndex;
+                        if (oldIndex === newIndex) return;
+                        const movedItem = dataArray.splice(oldIndex, 1)[0];
+                        dataArray.splice(newIndex, 0, movedItem);
                         await saveDataToStorage();
-                        await logActivity(currentUser?.email, `Reordered rows in ${tableName}`, `Moved row from ${evt.oldIndex} to ${evt.newIndex}`);
+                        await logActivity(currentUser?.email, `Reordered rows in ${tableName}`, `Moved row from ${oldIndex} to ${newIndex}`);
                     }
                 });
             }
 
-            // Columns dragging
             if (canDragColumns) {
-                const headerCells = Array.from(theadRow.children).filter(th => !th.classList.contains('action-header'));
-                if (headerCells.length > 0) {
-                    new Sortable(theadRow, {
-                        animation: 150,
-                        draggable: 'th:not(.action-header)',
-                        onEnd: async function(evt) {
-                            const oldIndex = evt.oldIndex;
-                            const newIndex = evt.newIndex;
-                            if (oldIndex === newIndex) return;
-                            const movedCol = columnsArray.splice(oldIndex, 1)[0];
-                            columnsArray.splice(newIndex, 0, movedCol);
-                            const keys = columnsArray.map(c => c.key);
-                            dataArray.forEach(row => {
-                                const newRow = {};
-                                keys.forEach(key => { newRow[key] = row[key] || ''; });
-                                Object.keys(row).forEach(k => { delete row[k]; });
-                                Object.assign(row, newRow);
-                            });
-                            await saveAllToStorage();
-                            await logActivity(currentUser?.email, `Reordered columns in ${tableName}`, `Moved column from ${oldIndex} to ${newIndex}`);
-                            renderFullApp();
-                        }
-                    });
-                }
+                theadRow._sortable = new Sortable(theadRow, {
+                    animation: 150,
+                    draggable: 'th.draggable-column',
+                    onEnd: async function(evt) {
+                        const oldIndex = evt.oldIndex;
+                        const newIndex = evt.newIndex;
+                        if (oldIndex === newIndex) return;
+                        const movedCol = columnsArray.splice(oldIndex, 1)[0];
+                        columnsArray.splice(newIndex, 0, movedCol);
+                        const keys = columnsArray.map(c => c.key);
+                        dataArray.forEach(row => {
+                            const newRow = {};
+                            keys.forEach(key => { newRow[key] = row[key] || ''; });
+                            Object.keys(row).forEach(k => { delete row[k]; });
+                            Object.assign(row, newRow);
+                        });
+                        await saveAllToStorage();
+                        await logActivity(currentUser?.email, `Reordered columns in ${tableName}`, `Moved column from ${oldIndex} to ${newIndex}`);
+                        renderFullApp();
+                    }
+                });
             }
         }
 
@@ -611,20 +556,17 @@
             const canDragRows = perms.dragRows || false;
             tableData.forEach((row, idx) => {
                 const tr = document.createElement("tr");
-                // Drag handle column only if dragRows allowed
+                // Drag handle cell
+                const handleTd = document.createElement("td");
+                handleTd.style.width = "30px";
                 if (canDragRows) {
-                    const handleTd = document.createElement("td");
                     handleTd.className = "drag-handle";
                     handleTd.innerHTML = "☰";
-                    tr.appendChild(handleTd);
                 } else {
-                    // Empty placeholder to keep alignment
-                    const emptyTd = document.createElement("td");
-                    emptyTd.style.width = "30px";
-                    emptyTd.innerHTML = "";
-                    tr.appendChild(emptyTd);
+                    handleTd.innerHTML = "";
                 }
-                
+                tr.appendChild(handleTd);
+
                 columns.forEach(col => {
                     const td = document.createElement("td");
                     const input = document.createElement("input");
@@ -701,23 +643,14 @@
 
         async function submitAccessRequest(email) {
             email = email.trim().toLowerCase();
-            if (!email) {
-                alert("Please enter an email address.");
-                return false;
-            }
+            if (!email) { alert("Please enter an email address."); return false; }
             try {
                 const viewers = await fbGet('viewers') || {};
                 const alreadyExists = Object.values(viewers).some(e => e.toLowerCase() === email) || email === ADMIN_EMAIL.toLowerCase();
-                if (alreadyExists) {
-                    alert("This email already has access. Please sign in.");
-                    return false;
-                }
+                if (alreadyExists) { alert("This email already has access. Please sign in."); return false; }
                 const requests = await fbGet(PATHS.ACCESS_REQUESTS) || {};
                 const alreadyRequested = Object.values(requests).some(r => r.email === email && r.status === 'pending');
-                if (alreadyRequested) {
-                    alert("A request for this email is already pending approval.");
-                    return false;
-                }
+                if (alreadyRequested) { alert("A request for this email is already pending approval."); return false; }
                 await fbPush(PATHS.ACCESS_REQUESTS, { email, status: 'pending', timestamp: new Date().toISOString() });
                 alert("✅ Access request submitted! Admin will review and approve.");
                 return true;
@@ -741,10 +674,7 @@
         async function renderFullApp() {
             const root = document.getElementById("appRoot");
             if (!root) return;
-            if (!currentUser) {
-                renderAuthUI();
-                return;
-            }
+            if (!currentUser) { renderAuthUI(); return; }
             userRole = await getUserRole(currentUser.uid);
             if (!userRole) {
                 if (currentUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
@@ -777,11 +707,10 @@
             let invPerms = isAdmin ? null : (viewerPerms?.invoice || getDefaultTablePerms());
             let accPerms = isAdmin ? null : (viewerPerms?.accounts || getDefaultTablePerms());
             let fibPerms = isAdmin ? null : (viewerPerms?.fib || getDefaultTablePerms());
-            const sectionsHtml = [];
-            // For admin, always true; for viewer, use permission
             const invDragCols = isAdmin ? true : (invPerms?.dragColumns || false);
             const accDragCols = isAdmin ? true : (accPerms?.dragColumns || false);
             const fibDragCols = isAdmin ? true : (fibPerms?.dragColumns || false);
+            const sectionsHtml = [];
             if (isAdmin || invPerms.view) sectionsHtml.push(`<div class="section"><div class="section-header"><div class="section-title">📄 Invoice Master Grid</div><div class="table-actions" id="invoice-actions-container"></div></div><div class="table-wrapper"><table class="editable-table" id="invoice-table"><thead><tr><th style="width:30px;"></th>${renderHeaders(invoiceColumns, 'invoice', invPerms, invDragCols)}<th class="action-header">Action</th></tr></thead><tbody id="invoice-tbody"></tbody></table></div></div>`);
             if (isAdmin || accPerms.view) sectionsHtml.push(`<div class="section"><div class="section-header"><div class="section-title">💰 Accounts Summary</div><div class="table-actions" id="accounts-actions-container"></div></div><div class="table-wrapper"><table class="editable-table" id="accounts-table"><thead><tr><th style="width:30px;"></th>${renderHeaders(accountsColumns, 'accounts', accPerms, accDragCols)}<th class="action-header">Action</th></tr></thead><tbody id="accounts-tbody"></tbody></table></div></div>`);
             if (isAdmin || fibPerms.view) sectionsHtml.push(`<div class="section"><div class="section-header"><div class="section-title">🏦 FIB Balance</div><div class="table-actions" id="fib-actions-container"></div></div><div class="table-wrapper"><table class="editable-table" id="fib-table"><thead><tr><th style="width:30px;"></th>${renderHeaders(fibColumns, 'fib', fibPerms, fibDragCols)}<th class="action-header">Action</th></tr></thead><tbody id="fib-tbody"></tbody></table></div></div>`);
@@ -831,26 +760,26 @@
                     </div>
                 </div>` : ''}
                 ${sectionsHtml.join('')}
-                <div class="info-bar"><div>${isAdmin ? 'Admin: full control' : 'Limited by permissions'}</div><div>Data stored in Firebase · Auth Secured · Baghdad Time · Drag Permissions</div></div></div>`;
+                <div class="info-bar"><div>${isAdmin ? 'Admin: full control' : 'Limited by permissions'}</div><div>Data stored in Firebase · Auth Secured · Baghdad Time</div></div></div>`;
 
             const refreshTables = () => {
                 const invDragRows = isAdmin ? true : (invPerms?.dragRows || false);
                 const accDragRows = isAdmin ? true : (accPerms?.dragRows || false);
                 const fibDragRows = isAdmin ? true : (fibPerms?.dragRows || false);
-                const invDragCols = isAdmin ? true : (invPerms?.dragColumns || false);
-                const accDragCols = isAdmin ? true : (accPerms?.dragColumns || false);
-                const fibDragCols = isAdmin ? true : (fibPerms?.dragColumns || false);
+                const invDragCols2 = isAdmin ? true : (invPerms?.dragColumns || false);
+                const accDragCols2 = isAdmin ? true : (accPerms?.dragColumns || false);
+                const fibDragCols2 = isAdmin ? true : (fibPerms?.dragColumns || false);
                 if (document.getElementById("invoice-tbody")) {
                     renderDynamicTable("invoice-tbody", invoiceData, invoiceColumns, isAdmin, "Invoice", invPerms || getDefaultTablePerms());
-                    initDraggableTable("invoice-table", invoiceData, invoiceColumns, saveDataToStorage, "Invoice", invDragRows, invDragCols);
+                    initDraggableTable("invoice-table", invoiceData, invoiceColumns, "Invoice", invDragRows, invDragCols2);
                 }
                 if (document.getElementById("accounts-tbody")) {
                     renderDynamicTable("accounts-tbody", accountsData, accountsColumns, isAdmin, "Accounts", accPerms || getDefaultTablePerms());
-                    initDraggableTable("accounts-table", accountsData, accountsColumns, saveDataToStorage, "Accounts", accDragRows, accDragCols);
+                    initDraggableTable("accounts-table", accountsData, accountsColumns, "Accounts", accDragRows, accDragCols2);
                 }
                 if (document.getElementById("fib-tbody")) {
                     renderDynamicTable("fib-tbody", fibData, fibColumns, isAdmin, "FIB", fibPerms || getDefaultTablePerms());
-                    initDraggableTable("fib-table", fibData, fibColumns, saveDataToStorage, "FIB", fibDragRows, fibDragCols);
+                    initDraggableTable("fib-table", fibData, fibColumns, "FIB", fibDragRows, fibDragCols2);
                 }
                 if (isAdmin) { document.querySelectorAll('.remove-col-btn').forEach(btn => btn.addEventListener('click', async (e) => { const table = btn.getAttribute('data-table'), key = btn.getAttribute('data-key'); if (confirm("Remove column?")) { await removeColumnFromTable(table, key); renderFullApp(); } })); }
             };
@@ -859,22 +788,19 @@
             if (isAdmin) {
                 const tabs = document.querySelectorAll('.admin-tab');
                 const panes = document.querySelectorAll('.tab-pane');
-                tabs.forEach(tab => {
-                    tab.addEventListener('click', () => {
-                        const target = tab.dataset.tab;
-                        tabs.forEach(t => t.classList.remove('active'));
-                        panes.forEach(p => p.classList.remove('active'));
-                        tab.classList.add('active');
-                        document.getElementById(`tab-${target}`).classList.add('active');
-                    });
-                });
+                tabs.forEach(tab => tab.addEventListener('click', () => {
+                    const target = tab.dataset.tab;
+                    tabs.forEach(t => t.classList.remove('active'));
+                    panes.forEach(p => p.classList.remove('active'));
+                    tab.classList.add('active');
+                    document.getElementById(`tab-${target}`).classList.add('active');
+                }));
 
                 const requests = await getAccessRequests();
-                const pendingCount = requests.length;
                 const badge = document.getElementById('pendingCountBadge');
                 if (badge) {
-                    badge.textContent = pendingCount;
-                    badge.style.display = pendingCount > 0 ? 'inline-block' : 'none';
+                    badge.textContent = requests.length;
+                    badge.style.display = requests.length > 0 ? 'inline-block' : 'none';
                 }
 
                 const reqContainer = document.getElementById("requestsList");
@@ -890,28 +816,21 @@
                             </div>
                         </div>
                     `).join('');
-                    document.querySelectorAll('.approve-btn').forEach(btn => {
-                        btn.addEventListener('click', async () => {
-                            const id = btn.dataset.id;
-                            const email = btn.dataset.email;
-                            const pwd = prompt(`Enter password for ${email}:`);
-                            if (!pwd) return;
-                            const success = await addViewer(email, pwd);
-                            if (success) {
-                                await fbUpdate(`${PATHS.ACCESS_REQUESTS}/${id}`, { status: 'approved' });
-                                renderFullApp();
-                            }
-                        });
-                    });
-                    document.querySelectorAll('.reject-btn').forEach(btn => {
-                        btn.addEventListener('click', async () => {
-                            const id = btn.dataset.id;
-                            if (confirm("Reject this request?")) {
-                                await rejectRequest(id);
-                                renderFullApp();
-                            }
-                        });
-                    });
+                    document.querySelectorAll('.approve-btn').forEach(btn => btn.addEventListener('click', async () => {
+                        const id = btn.dataset.id, email = btn.dataset.email;
+                        const pwd = prompt(`Enter password for ${email}:`);
+                        if (!pwd) return;
+                        if (await addViewer(email, pwd)) {
+                            await fbUpdate(`${PATHS.ACCESS_REQUESTS}/${id}`, { status: 'approved' });
+                            renderFullApp();
+                        }
+                    }));
+                    document.querySelectorAll('.reject-btn').forEach(btn => btn.addEventListener('click', async () => {
+                        if (confirm("Reject this request?")) {
+                            await rejectRequest(btn.dataset.id);
+                            renderFullApp();
+                        }
+                    }));
                 }
 
                 const invDiv = document.getElementById("invoice-actions-container");
@@ -948,20 +867,15 @@
                         container.innerHTML += `<div class="colleague-tag">${escapeHtml(email)} <button class="remove-colleague" data-uid="${uid}" data-email="${escapeHtml(email)}">✖</button></div>`;
                     }
                     document.querySelectorAll(".remove-colleague").forEach(btn => btn.addEventListener("click", async (e) => {
-                        const uid = btn.getAttribute("data-uid");
-                        const email = btn.getAttribute("data-email");
-                        if (confirm(`Remove ${email}?`)) {
-                            await removeViewer(uid, email);
-                            renderFullApp();
-                        }
+                        const uid = btn.dataset.uid, email = btn.dataset.email;
+                        if (confirm(`Remove ${email}?`)) { await removeViewer(uid, email); renderFullApp(); }
                     }));
                 }
                 document.getElementById("addViewerBtn")?.addEventListener("click", async () => {
                     const email = document.getElementById("newViewerEmail")?.value.trim();
                     const pwd = document.getElementById("newViewerPassword")?.value;
                     if (email && pwd) {
-                        const success = await addViewer(email, pwd);
-                        if (success) {
+                        if (await addViewer(email, pwd)) {
                             document.getElementById("newViewerEmail").value = '';
                             document.getElementById("newViewerPassword").value = '';
                             renderFullApp();
@@ -981,30 +895,19 @@
                         for (let tbl of tables) {
                             const p = perms[tbl] || getDefaultTablePerms();
                             const row = permBody.insertRow();
-                            if (firstRow) {
-                                row.insertCell(0).innerHTML = `<strong>${escapeHtml(email)}</strong>`;
-                                firstRow = false;
-                            } else {
-                                row.insertCell(0).innerHTML = '';
-                            }
+                            if (firstRow) { row.insertCell(0).innerHTML = `<strong>${escapeHtml(email)}</strong>`; firstRow = false; }
+                            else row.insertCell(0).innerHTML = '';
                             row.insertCell(1).innerHTML = tbl.charAt(0).toUpperCase() + tbl.slice(1);
                             const addCheck = (action, checked) => {
                                 const cell = row.insertCell();
                                 const chk = document.createElement("input");
-                                chk.type = "checkbox";
-                                chk.checked = checked;
-                                chk.className = "perm-checkbox";
-                                chk.addEventListener("change", (e) => updateTablePermission(uid, tbl, action, e.target.checked));
+                                chk.type = "checkbox"; chk.checked = checked; chk.className = "perm-checkbox";
+                                chk.addEventListener("change", e => updateTablePermission(uid, tbl, action, e.target.checked));
                                 cell.appendChild(chk);
                             };
-                            addCheck('view', p.view);
-                            addCheck('edit', p.edit);
-                            addCheck('addRow', p.addRow);
-                            addCheck('deleteRow', p.deleteRow);
-                            addCheck('addColumn', p.addColumn);
-                            addCheck('deleteColumn', p.deleteColumn);
-                            addCheck('dragRows', p.dragRows || false);
-                            addCheck('dragColumns', p.dragColumns || false);
+                            addCheck('view', p.view); addCheck('edit', p.edit); addCheck('addRow', p.addRow);
+                            addCheck('deleteRow', p.deleteRow); addCheck('addColumn', p.addColumn); addCheck('deleteColumn', p.deleteColumn);
+                            addCheck('dragRows', p.dragRows || false); addCheck('dragColumns', p.dragColumns || false);
                         }
                     }
                 }
@@ -1017,57 +920,37 @@
                 document.getElementById("clearLogBtn")?.addEventListener("click", clearActivityLog);
             }
 
-            document.getElementById("logoutBtn")?.addEventListener("click", async () => {
-                await logActivity(currentUser.email, "Logged out", "");
-                await signOut(auth);
-            });
+            document.getElementById("logoutBtn")?.addEventListener("click", async () => { await logActivity(currentUser.email, "Logged out", ""); await signOut(auth); });
             document.getElementById("printBtn")?.addEventListener("click", () => { logActivity(currentUser.email,"Printed dashboard",""); window.print(); });
         }
 
         function renderAuthUI() {
             const root = document.getElementById("appRoot");
             root.innerHTML = `<div class="modal" id="authModal"><div class="modal-card">
-                <div class="tab-container">
-                    <button class="tab-btn active" id="loginTab">Sign In</button>
-                    <button class="tab-btn" id="requestTab">Request Access</button>
-                </div>
+                <div class="tab-container"><button class="tab-btn active" id="loginTab">Sign In</button><button class="tab-btn" id="requestTab">Request Access</button></div>
                 <div id="authForm">
                     <div class="input-group"><input type="email" id="authEmail" placeholder="Email"></div>
                     <div class="input-group" id="pwdGroup"><input type="password" id="authPassword" placeholder="Password"></div>
                     <div id="authError" class="error-message"></div>
-                    <div class="flex-btns">
-                        <button class="btn btn-primary" id="authSubmitBtn">Sign In</button>
-                        <button class="btn btn-warning" id="forgotPwdBtn">Forgot Password?</button>
-                    </div>
+                    <div class="flex-btns"><button class="btn btn-primary" id="authSubmitBtn">Sign In</button><button class="btn btn-warning" id="forgotPwdBtn">Forgot Password?</button></div>
                 </div>
             </div></div>`;
 
             let mode = 'login';
-            const loginTab = document.getElementById('loginTab');
-            const requestTab = document.getElementById('requestTab');
-            const submitBtn = document.getElementById('authSubmitBtn');
-            const emailInput = document.getElementById('authEmail');
-            const passwordInput = document.getElementById('authPassword');
-            const pwdGroup = document.getElementById('pwdGroup');
-            const forgotBtn = document.getElementById('forgotPwdBtn');
-            const errorDiv = document.getElementById('authError');
+            const loginTab = document.getElementById('loginTab'), requestTab = document.getElementById('requestTab');
+            const submitBtn = document.getElementById('authSubmitBtn'), emailInput = document.getElementById('authEmail');
+            const passwordInput = document.getElementById('authPassword'), pwdGroup = document.getElementById('pwdGroup');
+            const forgotBtn = document.getElementById('forgotPwdBtn'), errorDiv = document.getElementById('authError');
 
             function setMode(newMode) {
                 mode = newMode;
                 loginTab.classList.toggle('active', mode === 'login');
                 requestTab.classList.toggle('active', mode === 'request');
-                if (mode === 'login') {
-                    submitBtn.textContent = 'Sign In';
-                    pwdGroup.style.display = 'block';
-                    forgotBtn.style.display = 'inline-block';
-                } else {
-                    submitBtn.textContent = 'Request Access';
-                    pwdGroup.style.display = 'none';
-                    forgotBtn.style.display = 'none';
-                }
+                submitBtn.textContent = mode === 'login' ? 'Sign In' : 'Request Access';
+                pwdGroup.style.display = mode === 'login' ? 'block' : 'none';
+                forgotBtn.style.display = mode === 'login' ? 'inline-block' : 'none';
                 errorDiv.textContent = '';
             }
-
             loginTab.onclick = () => setMode('login');
             requestTab.onclick = () => setMode('request');
 
@@ -1077,36 +960,23 @@
                 if (mode === 'login') {
                     const pwd = passwordInput.value;
                     if (!pwd) { errorDiv.textContent = 'Password required.'; return; }
-                    try {
-                        await signInWithEmailAndPassword(auth, email, pwd);
-                    } catch (err) {
-                        errorDiv.textContent = err.message;
-                    }
+                    try { await signInWithEmailAndPassword(auth, email, pwd); }
+                    catch (err) { errorDiv.textContent = err.message; }
                 } else {
-                    errorDiv.textContent = '';
-                    submitBtn.disabled = true;
-                    submitBtn.textContent = 'Submitting...';
+                    errorDiv.textContent = ''; submitBtn.disabled = true; submitBtn.textContent = 'Submitting...';
                     const success = await submitAccessRequest(email);
-                    submitBtn.disabled = false;
-                    submitBtn.textContent = 'Request Access';
-                    if (success) {
-                        emailInput.value = '';
-                    }
+                    submitBtn.disabled = false; submitBtn.textContent = 'Request Access';
+                    if (success) emailInput.value = '';
                 }
             }
-
             submitBtn.onclick = handleAction;
             forgotBtn.onclick = async () => {
                 const email = emailInput.value.trim();
                 if (!email) { errorDiv.textContent = 'Enter your email first.'; return; }
-                try {
-                    await sendPasswordResetEmail(auth, email);
-                    alert('Password reset email sent!');
-                } catch (err) {
-                    errorDiv.textContent = err.message;
-                }
+                try { await sendPasswordResetEmail(auth, email); alert('Password reset email sent!'); }
+                catch (err) { errorDiv.textContent = err.message; }
             };
-            [emailInput, passwordInput].forEach(i => i.addEventListener('keypress', (e) => { if(e.key==='Enter') handleAction(); }));
+            [emailInput, passwordInput].forEach(i => i.addEventListener('keypress', e => { if(e.key==='Enter') handleAction(); }));
         }
 
         function escapeHtml(str) { return String(str).replace(/[&<>]/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
@@ -1119,7 +989,6 @@
                 if (user) {
                     const role = await getUserRole(user.uid);
                     const isAdminEmail = user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
-                    
                     if (!isAdminEmail) {
                         const viewers = await fbGet('viewers') || {};
                         if (!role || role === 'revoked' || !viewers[user.uid]) {
@@ -1128,33 +997,19 @@
                             return;
                         }
                     }
-
                     const userRoleRef = ref(db, `${PATHS.USER_ROLES}/${user.uid}`);
                     const viewersRef = ref(db, `viewers/${user.uid}`);
-                    
                     if (window._roleUnsubscribe) window._roleUnsubscribe();
                     if (window._viewerUnsubscribe) window._viewerUnsubscribe();
-                    
                     window._roleUnsubscribe = onValue(userRoleRef, async (snapshot) => {
-                        if (!snapshot.exists() || snapshot.val().role === 'revoked') {
-                            alert('Your access has been revoked.');
-                            await signOut(auth);
-                        }
+                        if (!snapshot.exists() || snapshot.val().role === 'revoked') { alert('Your access has been revoked.'); await signOut(auth); }
                     });
-                    
                     if (!isAdminEmail) {
                         window._viewerUnsubscribe = onValue(viewersRef, async (snapshot) => {
-                            if (!snapshot.exists()) {
-                                alert('Your account has been removed.');
-                                await signOut(auth);
-                            }
+                            if (!snapshot.exists()) { alert('Your account has been removed.'); await signOut(auth); }
                         });
                     }
-
-                    await loadActivityLog();
-                    await loadPermissions();
-                    await loadColumnsAndData();
-                    await loadSnapshots();
+                    await loadActivityLog(); await loadPermissions(); await loadColumnsAndData(); await loadSnapshots();
                     renderFullApp();
                 } else {
                     if (window._roleUnsubscribe) window._roleUnsubscribe();
