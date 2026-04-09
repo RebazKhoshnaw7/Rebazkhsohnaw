@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>Finance Vault · Admin Approval</title>
+    <title>Finance Vault · Admin Tabs · Responsive</title>
+    <!-- SortableJS for drag & drop -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
@@ -51,8 +53,63 @@
     </script>
     <style>
         * { box-sizing: border-box; }
-        body { background: #eef2f7; font-family: 'Inter', system-ui, sans-serif; margin: 0; padding: 20px; color: #1a2c3e; }
-        .app-container { max-width: 1600px; margin: 0 auto; background: white; border-radius: 28px; box-shadow: 0 20px 35px -12px rgba(0,0,0,0.1); overflow: hidden; }
+        body {
+            background: #eef2f7;
+            font-family: 'Inter', system-ui, sans-serif;
+            margin: 0;
+            padding: 0;
+            color: #1a2c3e;
+        }
+        .app-container {
+            max-width: 100%;
+            margin: 0 auto;
+            background: white;
+            border-radius: 0;
+            box-shadow: none;
+            overflow: hidden;
+        }
+        /* Desktop styles */
+        @media (min-width: 768px) {
+            body {
+                padding: 20px;
+            }
+            .app-container {
+                max-width: 1600px;
+                border-radius: 28px;
+                box-shadow: 0 20px 35px -12px rgba(0,0,0,0.1);
+                margin: 0 auto;
+            }
+        }
+        /* Mobile adjustments */
+        @media (max-width: 767px) {
+            .section {
+                margin: 16px 12px 24px 12px;
+            }
+            .section-header {
+                padding: 12px 16px;
+            }
+            .table-wrapper {
+                padding: 12px 12px;
+            }
+            .user-bar {
+                padding: 12px 16px;
+            }
+            .admin-panel {
+                margin: 12px 12px;
+                padding: 12px;
+            }
+            .info-bar {
+                padding: 12px 16px;
+            }
+            .admin-tabs {
+                flex-wrap: wrap;
+            }
+            .admin-tab {
+                font-size: 0.8rem;
+                padding: 8px 12px;
+            }
+        }
+
         .user-bar { background: #f8fafd; padding: 12px 24px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; gap: 15px; }
         .user-info { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
         .user-badge { background: #eef3fc; border-radius: 40px; padding: 6px 16px; font-weight: 500; font-size: 0.85rem; }
@@ -70,7 +127,8 @@
         .btn-info { background: #e0f2fe; color: #0369a1; }
         .table-wrapper { overflow-x: auto; padding: 16px 20px; }
         .editable-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 500px; }
-        .editable-table th { background: #f8fafd; padding: 12px 10px; font-weight: 600; border-bottom: 1px solid #e2e8f0; text-align: left; position: relative; }
+        .editable-table th { background: #f8fafd; padding: 12px 10px; font-weight: 600; border-bottom: 1px solid #e2e8f0; text-align: left; position: relative; cursor: grab; user-select: none; }
+        .editable-table th:active { cursor: grabbing; }
         .editable-table td { padding: 8px 6px; border-bottom: 1px solid #ecf1f6; }
         .cell-input { width: 100%; border: 1px solid #e2e8f0; border-radius: 12px; padding: 8px 10px; font-size: 0.8rem; font-family: monospace; background: white; transition: 0.1s; }
         .cell-input:focus { outline: none; border-color: #2e7eb0; box-shadow: 0 0 0 2px rgba(46,126,176,0.2); }
@@ -79,6 +137,8 @@
         .delete-btn:hover:not(:disabled) { background: #fff0f0; color: #d9534f; }
         .delete-btn:disabled { opacity: 0.4; cursor: not-allowed; }
         .action-cell { text-align: center; width: 70px; }
+        .drag-handle { cursor: grab; margin-right: 6px; opacity: 0.5; font-size: 1.2rem; user-select: none; text-align: center; width: 30px; }
+        .drag-handle:active { cursor: grabbing; }
         .info-bar { padding: 12px 24px; background: #fafcff; border-top: 1px solid #eef2f8; font-size: 0.75rem; display: flex; justify-content: space-between; flex-wrap: wrap; }
         .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
         .modal-card { background: white; max-width: 600px; width: 95%; border-radius: 28px; padding: 24px; box-shadow: 0 20px 35px rgba(0,0,0,0.2); }
@@ -86,6 +146,13 @@
         .input-group input, .input-group select { width: 100%; padding: 12px; border-radius: 20px; border: 1px solid #ccc; }
         .checkbox-group { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
         .admin-panel { background: #fef9e6; border-radius: 20px; margin: 12px 24px; padding: 16px; border: 1px solid #ffe2b5; }
+        .admin-tabs { display: flex; gap: 4px; border-bottom: 2px solid #e2e8f0; margin-bottom: 16px; flex-wrap: wrap; }
+        .admin-tab { background: none; border: none; padding: 10px 20px; font-size: 0.9rem; font-weight: 500; color: #64748b; cursor: pointer; border-radius: 8px 8px 0 0; position: relative; transition: all 0.2s; }
+        .admin-tab:hover { background: #f1f5f9; color: #1f5f8e; }
+        .admin-tab.active { background: white; color: #1f5f8e; box-shadow: 0 -2px 4px rgba(0,0,0,0.02); }
+        .badge { display: inline-block; background: #bc3f2e; color: white; font-size: 0.7rem; font-weight: bold; padding: 2px 6px; border-radius: 12px; margin-left: 6px; min-width: 20px; text-align: center; }
+        .tab-pane { display: none; }
+        .tab-pane.active { display: block; }
         .colleague-list { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
         .colleague-tag { background: white; border-radius: 30px; padding: 4px 12px; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 8px; border: 1px solid #dcdcdc; }
         .remove-colleague { background: none; border: none; cursor: pointer; color: #bc3f2e; font-weight: bold; }
@@ -124,6 +191,7 @@
             .cell-input { border: none !important; background: transparent !important; padding: 0 !important; font-size: 0.75rem; box-shadow: none; font-family: inherit; }
             .editable-table th:last-child, .editable-table td:last-child { display: none; }
             .cell-input { -webkit-appearance: none; appearance: none; color: black; }
+            .drag-handle { display: none; }
         }
     </style>
 </head>
@@ -179,14 +247,11 @@
         let userRole = null;
         const ADMIN_EMAIL = "Rebaz.abdullah@Fast-pay.iq";
 
-        // Helper: get current date in Baghdad time (YYYY-MM-DD)
         function getBaghdadDate() {
             const date = new Date();
             const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad', year: 'numeric', month: '2-digit', day: '2-digit' });
             return formatter.format(date);
         }
-
-        // Helper: format timestamp for display in Baghdad time
         function formatBaghdadDateTime(isoString) {
             return new Date(isoString).toLocaleString('en-IQ', { timeZone: 'Asia/Baghdad' });
         }
@@ -373,7 +438,7 @@
         }
         async function saveSnapshots() { await fbSet(PATHS.SNAPSHOTS, snapshots); }
         async function saveCurrentSnapshot(date = null) {
-            const today = date || getBaghdadDate(); // Use Baghdad date
+            const today = date || getBaghdadDate();
             snapshots[today] = {
                 date: today, timestamp: new Date().toISOString(),
                 invoiceColumns: JSON.parse(JSON.stringify(invoiceColumns)), accountsColumns: JSON.parse(JSON.stringify(accountsColumns)), fibColumns: JSON.parse(JSON.stringify(fibColumns)),
@@ -464,6 +529,54 @@
             await logActivity(currentUser?.email, `Removed column from ${tableName}`, colKey);
             return true;
         }
+
+        function initDraggableTable(tableId, dataArray, columnsArray, saveCallback, tableName) {
+            const table = document.getElementById(tableId);
+            if (!table) return;
+            const tbody = table.querySelector('tbody');
+            const theadRow = table.querySelector('thead tr');
+            if (!tbody || !theadRow) return;
+
+            if (tbody) {
+                new Sortable(tbody, {
+                    animation: 150,
+                    handle: '.drag-handle',
+                    ghostClass: 'sortable-ghost',
+                    onEnd: async function(evt) {
+                        const movedItem = dataArray.splice(evt.oldIndex, 1)[0];
+                        dataArray.splice(evt.newIndex, 0, movedItem);
+                        await saveDataToStorage();
+                        await logActivity(currentUser?.email, `Reordered rows in ${tableName}`, `Moved row from ${evt.oldIndex} to ${evt.newIndex}`);
+                    }
+                });
+            }
+
+            const headerCells = Array.from(theadRow.children).filter(th => !th.classList.contains('action-header'));
+            if (headerCells.length > 0) {
+                new Sortable(theadRow, {
+                    animation: 150,
+                    draggable: 'th:not(.action-header)',
+                    onEnd: async function(evt) {
+                        const oldIndex = evt.oldIndex;
+                        const newIndex = evt.newIndex;
+                        if (oldIndex === newIndex) return;
+                        const movedCol = columnsArray.splice(oldIndex, 1)[0];
+                        columnsArray.splice(newIndex, 0, movedCol);
+                        const keys = columnsArray.map(c => c.key);
+                        dataArray.forEach(row => {
+                            const newRow = {};
+                            keys.forEach(key => { newRow[key] = row[key] || ''; });
+                            Object.keys(row).forEach(k => { delete row[k]; });
+                            Object.assign(row, newRow);
+                        });
+                        await saveAllToStorage();
+                        await logActivity(currentUser?.email, `Reordered columns in ${tableName}`, `Moved column from ${oldIndex} to ${newIndex}`);
+                        renderFullApp();
+                    }
+                });
+            }
+        }
+
         function renderDynamicTable(tbodyId, tableData, columns, isAdmin, tableName, perms) {
             const tbody = document.getElementById(tbodyId);
             if (!tbody) return;
@@ -472,6 +585,11 @@
             const canDeleteRow = perms.deleteRow;
             tableData.forEach((row, idx) => {
                 const tr = document.createElement("tr");
+                const handleTd = document.createElement("td");
+                handleTd.className = "drag-handle";
+                handleTd.innerHTML = "☰";
+                tr.appendChild(handleTd);
+                
                 columns.forEach(col => {
                     const td = document.createElement("td");
                     const input = document.createElement("input");
@@ -500,7 +618,7 @@
                         if (confirm(`Delete row #${idx+1}?`)) {
                             tableData.splice(idx, 1);
                             await saveDataToStorage();
-                            renderDynamicTable(tbodyId, tableData, columns, isAdmin, tableName, perms);
+                            renderFullApp();
                             await logActivity(currentUser?.email, `Deleted row in ${tableName}`, `Row ${idx}`);
                         }
                     });
@@ -534,12 +652,9 @@
         async function removeViewer(uid, email) {
             if (email === ADMIN_EMAIL) return false;
             try {
-                // Remove from viewers list
                 await fbUpdate('viewers', { [uid]: null });
-                // Delete permissions
                 delete viewerPermissions[uid];
                 await savePermissions();
-                // Set role to revoked (triggers real-time listener)
                 await set(ref(db, `${PATHS.USER_ROLES}/${uid}`), { role: 'revoked', email: email });
                 await logActivity(currentUser?.email, "Removed viewer", email);
                 return true;
@@ -549,7 +664,6 @@
             }
         }
 
-        // --- Access Requests ---
         async function submitAccessRequest(email) {
             email = email.trim().toLowerCase();
             if (!email) {
@@ -626,36 +740,96 @@
             let accPerms = isAdmin ? null : (viewerPerms?.accounts || getDefaultTablePerms());
             let fibPerms = isAdmin ? null : (viewerPerms?.fib || getDefaultTablePerms());
             const sectionsHtml = [];
-            if (isAdmin || invPerms.view) sectionsHtml.push(`<div class="section"><div class="section-header"><div class="section-title">📄 Invoice Master Grid</div><div class="table-actions" id="invoice-actions-container"></div></div><div class="table-wrapper"><table class="editable-table"><thead><tr>${renderHeaders(invoiceColumns, 'invoice', invPerms)}<th>Action</th></tr></thead><tbody id="invoice-tbody"></tbody></table></div></div>`);
-            if (isAdmin || accPerms.view) sectionsHtml.push(`<div class="section"><div class="section-header"><div class="section-title">💰 Accounts Summary</div><div class="table-actions" id="accounts-actions-container"></div></div><div class="table-wrapper"><table class="editable-table"><thead><tr>${renderHeaders(accountsColumns, 'accounts', accPerms)}<th>Action</th></tr></thead><tbody id="accounts-tbody"></tbody></table></div></div>`);
-            if (isAdmin || fibPerms.view) sectionsHtml.push(`<div class="section"><div class="section-header"><div class="section-title">🏦 FIB Balance</div><div class="table-actions" id="fib-actions-container"></div></div><div class="table-wrapper"><table class="editable-table"><thead><tr>${renderHeaders(fibColumns, 'fib', fibPerms)}<th>Action</th></tr></thead><tbody id="fib-tbody"></tbody></table></div></div>`);
+            if (isAdmin || invPerms.view) sectionsHtml.push(`<div class="section"><div class="section-header"><div class="section-title">📄 Invoice Master Grid</div><div class="table-actions" id="invoice-actions-container"></div></div><div class="table-wrapper"><table class="editable-table" id="invoice-table"><thead><tr><th style="width:30px;"></th>${renderHeaders(invoiceColumns, 'invoice', invPerms)}<th class="action-header">Action</th></tr></thead><tbody id="invoice-tbody"></tbody></table></div></div>`);
+            if (isAdmin || accPerms.view) sectionsHtml.push(`<div class="section"><div class="section-header"><div class="section-title">💰 Accounts Summary</div><div class="table-actions" id="accounts-actions-container"></div></div><div class="table-wrapper"><table class="editable-table" id="accounts-table"><thead><tr><th style="width:30px;"></th>${renderHeaders(accountsColumns, 'accounts', accPerms)}<th class="action-header">Action</th></tr></thead><tbody id="accounts-tbody"></tbody></table></div></div>`);
+            if (isAdmin || fibPerms.view) sectionsHtml.push(`<div class="section"><div class="section-header"><div class="section-title">🏦 FIB Balance</div><div class="table-actions" id="fib-actions-container"></div></div><div class="table-wrapper"><table class="editable-table" id="fib-table"><thead><tr><th style="width:30px;"></th>${renderHeaders(fibColumns, 'fib', fibPerms)}<th class="action-header">Action</th></tr></thead><tbody id="fib-tbody"></tbody></table></div></div>`);
 
             root.innerHTML = `<div class="app-container"><div class="user-bar"><div class="user-info"><span class="user-badge">🔒 ${escapeHtml(currentUser.email)}</span><span class="role-badge">${isAdmin ? '👑 ADMIN' : '👁️ VIEWER'}</span></div><div><button class="btn-sm print-btn" id="printBtn">🖨️ Print Tables Only</button><button class="btn-sm" id="logoutBtn">🚪 Logout</button></div></div>
                 ${isAdmin ? `<div class="admin-panel">
-                    <strong>👥 Pending Access Requests</strong>
-                    <div id="requestsList" class="request-list">Loading...</div>
-                    <hr style="margin:20px 0;">
-                    <strong>👥 Granular Permissions per Viewer</strong>
-                    <div style="display:flex; gap:8px; margin:10px 0;"><input type="email" id="newViewerEmail" placeholder="colleague@company.com"><input type="password" id="newViewerPassword" placeholder="Password"><button class="btn btn-success" id="addViewerBtn">➕ Add Viewer</button></div>
-                    <div id="viewerListContainer" class="colleague-list"></div>
-                    <div><strong>🔐 Permission Matrix</strong><table class="permission-table" id="permTable"><thead><tr><th>Viewer</th><th>Table</th><th>View</th><th>Edit</th><th>Add Row</th><th>Delete Row</th><th>Add Column</th><th>Delete Column</th></tr></thead><tbody id="permTableBody"></tbody></table></div>
-                    <div style="margin-top:20px;"><strong>📅 Daily Reports</strong><div><button class="btn btn-primary" id="saveSnapshotBtn">💾 Save Today's Snapshot</button></div><div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;"><select id="reportDateSelect"></select><button class="btn btn-success" id="generateReportBtn">📊 Generate Report</button><button class="btn btn-info" id="downloadCsvBtn">⬇️ Download Report as CSV</button></div><div id="reportContent"></div></div>
-                    <div style="margin-top:20px;"><strong>📋 Activity Log</strong><button class="btn-sm clear-log-btn" id="clearLogBtn">Clear Log</button><div id="activityLogContainer" class="activity-log"></div></div>
+                    <div class="admin-tabs">
+                        <button class="admin-tab active" data-tab="requests">🔔 Requests <span id="pendingCountBadge" class="badge">0</span></button>
+                        <button class="admin-tab" data-tab="viewers">👥 Viewers & Permissions</button>
+                        <button class="admin-tab" data-tab="reports">📅 Daily Reports</button>
+                        <button class="admin-tab" data-tab="logs">📋 Activity Log</button>
+                    </div>
+                    <div class="admin-tab-content">
+                        <div id="tab-requests" class="tab-pane active">
+                            <h3>Pending Access Requests</h3>
+                            <div id="requestsList" class="request-list">Loading...</div>
+                        </div>
+                        <div id="tab-viewers" class="tab-pane">
+                            <h3>Viewer Management</h3>
+                            <div style="display:flex; gap:8px; margin:10px 0;">
+                                <input type="email" id="newViewerEmail" placeholder="colleague@company.com">
+                                <input type="password" id="newViewerPassword" placeholder="Password">
+                                <button class="btn btn-success" id="addViewerBtn">➕ Add Viewer</button>
+                            </div>
+                            <div id="viewerListContainer" class="colleague-list"></div>
+                            <h3 style="margin-top:20px;">Permission Matrix</h3>
+                            <table class="permission-table" id="permTable">
+                                <thead><tr><th>Viewer</th><th>Table</th><th>View</th><th>Edit</th><th>Add Row</th><th>Delete Row</th><th>Add Column</th><th>Delete Column</th></tr></thead>
+                                <tbody id="permTableBody"></tbody>
+                            </table>
+                        </div>
+                        <div id="tab-reports" class="tab-pane">
+                            <h3>Daily Reports</h3>
+                            <div><button class="btn btn-primary" id="saveSnapshotBtn">💾 Save Today's Snapshot</button></div>
+                            <div style="display:flex; gap:8px; margin-top:16px; flex-wrap:wrap;">
+                                <select id="reportDateSelect"></select>
+                                <button class="btn btn-success" id="generateReportBtn">📊 Generate Report</button>
+                                <button class="btn btn-info" id="downloadCsvBtn">⬇️ Download as CSV</button>
+                            </div>
+                            <div id="reportContent"></div>
+                        </div>
+                        <div id="tab-logs" class="tab-pane">
+                            <h3>Activity Log</h3>
+                            <button class="btn-sm clear-log-btn" id="clearLogBtn">Clear Log</button>
+                            <div id="activityLogContainer" class="activity-log"></div>
+                        </div>
+                    </div>
                 </div>` : ''}
                 ${sectionsHtml.join('')}
-                <div class="info-bar"><div>${isAdmin ? 'Admin: full control' : 'Limited by permissions'}</div><div>Data stored in Firebase · Auth Secured · Baghdad Time</div></div></div>`;
+                <div class="info-bar"><div>${isAdmin ? 'Admin: full control' : 'Limited by permissions'}</div><div>Data stored in Firebase · Auth Secured · Baghdad Time · Drag &amp; Drop</div></div></div>`;
 
             const refreshTables = () => {
-                if (document.getElementById("invoice-tbody")) renderDynamicTable("invoice-tbody", invoiceData, invoiceColumns, isAdmin, "Invoice", invPerms || { edit: false, deleteRow: false });
-                if (document.getElementById("accounts-tbody")) renderDynamicTable("accounts-tbody", accountsData, accountsColumns, isAdmin, "Accounts", accPerms || { edit: false, deleteRow: false });
-                if (document.getElementById("fib-tbody")) renderDynamicTable("fib-tbody", fibData, fibColumns, isAdmin, "FIB", fibPerms || { edit: false, deleteRow: false });
+                if (document.getElementById("invoice-tbody")) {
+                    renderDynamicTable("invoice-tbody", invoiceData, invoiceColumns, isAdmin, "Invoice", invPerms || { edit: false, deleteRow: false });
+                    initDraggableTable("invoice-table", invoiceData, invoiceColumns, saveDataToStorage, "Invoice");
+                }
+                if (document.getElementById("accounts-tbody")) {
+                    renderDynamicTable("accounts-tbody", accountsData, accountsColumns, isAdmin, "Accounts", accPerms || { edit: false, deleteRow: false });
+                    initDraggableTable("accounts-table", accountsData, accountsColumns, saveDataToStorage, "Accounts");
+                }
+                if (document.getElementById("fib-tbody")) {
+                    renderDynamicTable("fib-tbody", fibData, fibColumns, isAdmin, "FIB", fibPerms || { edit: false, deleteRow: false });
+                    initDraggableTable("fib-table", fibData, fibColumns, saveDataToStorage, "FIB");
+                }
                 if (isAdmin) { document.querySelectorAll('.remove-col-btn').forEach(btn => btn.addEventListener('click', async (e) => { const table = btn.getAttribute('data-table'), key = btn.getAttribute('data-key'); if (confirm("Remove column?")) { await removeColumnFromTable(table, key); renderFullApp(); } })); }
             };
             refreshTables();
 
             if (isAdmin) {
-                const reqContainer = document.getElementById("requestsList");
+                const tabs = document.querySelectorAll('.admin-tab');
+                const panes = document.querySelectorAll('.tab-pane');
+                tabs.forEach(tab => {
+                    tab.addEventListener('click', () => {
+                        const target = tab.dataset.tab;
+                        tabs.forEach(t => t.classList.remove('active'));
+                        panes.forEach(p => p.classList.remove('active'));
+                        tab.classList.add('active');
+                        document.getElementById(`tab-${target}`).classList.add('active');
+                    });
+                });
+
                 const requests = await getAccessRequests();
+                const pendingCount = requests.length;
+                const badge = document.getElementById('pendingCountBadge');
+                if (badge) {
+                    badge.textContent = pendingCount;
+                    badge.style.display = pendingCount > 0 ? 'inline-block' : 'none';
+                }
+
+                const reqContainer = document.getElementById("requestsList");
                 if (requests.length === 0) {
                     reqContainer.innerHTML = "<div>No pending requests.</div>";
                 } else {
