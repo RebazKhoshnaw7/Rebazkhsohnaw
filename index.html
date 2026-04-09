@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>Finance Vault · Complete</title>
+    <title>Finance Vault · Final Fix</title>
     <!-- SortableJS -->
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
     <!-- Firebase SDKs -->
@@ -281,14 +281,14 @@
             await saveAllToStorage(); await logActivity(currentUser?.email, `Removed column from ${tableName}`, key); return true;
         }
 
-        // ---------- FIXED DRAG & DROP ----------
+        // ---------- FIXED DRAG & DROP (SMOOTH COLUMN REORDER) ----------
         function initDraggableTable(tableId, dataArr, colsArr, tableName, canDragRows, canDragColumns) {
             const tbl = document.getElementById(tableId); if (!tbl) return;
             const tbody = tbl.querySelector('tbody'), thead = tbl.querySelector('thead tr');
             if (!tbody || !thead) return;
-            // Clean up previous instances
             if (tbody._sortable) tbody._sortable.destroy();
             if (thead._sortable) thead._sortable.destroy();
+
             if (canDragRows) {
                 tbody._sortable = new Sortable(tbody, { animation: 150, handle: '.drag-handle', draggable: 'tr', ghostClass: 'sortable-ghost', onEnd: async (evt) => {
                     if (evt.oldIndex === evt.newIndex) return;
@@ -296,14 +296,38 @@
                     await saveDataToStorage(); await logActivity(currentUser?.email, `Reordered rows in ${tableName}`, `${evt.oldIndex} → ${evt.newIndex}`);
                 }});
             }
+
             if (canDragColumns) {
                 thead._sortable = new Sortable(thead, { animation: 150, draggable: 'th.draggable-column', onEnd: async (evt) => {
                     if (evt.oldIndex === evt.newIndex) return;
-                    const moved = colsArr.splice(evt.oldIndex, 1)[0]; colsArr.splice(evt.newIndex, 0, moved);
+                    // Reorder columns array
+                    const moved = colsArr.splice(evt.oldIndex, 1)[0];
+                    colsArr.splice(evt.newIndex, 0, moved);
+                    // Reorder data rows' keys
                     const keys = colsArr.map(c => c.key);
                     dataArr.forEach(r => { const nr = {}; keys.forEach(k => nr[k] = r[k] || ''); Object.keys(r).forEach(k => delete r[k]); Object.assign(r, nr); });
-                    await saveAllToStorage(); await logActivity(currentUser?.email, `Reordered columns in ${tableName}`, `${evt.oldIndex} → ${evt.newIndex}`);
-                    renderFullApp();
+                    await saveAllToStorage();
+                    await logActivity(currentUser?.email, `Reordered columns in ${tableName}`, `${evt.oldIndex} → ${evt.newIndex}`);
+                    // Smoothly update the DOM without full re-render
+                    const rows = Array.from(tbody.querySelectorAll('tr'));
+                    rows.forEach((tr, ri) => {
+                        const rowData = dataArr[ri];
+                        const cells = Array.from(tr.children);
+                        // Skip first cell (drag handle) and last cell (action)
+                        for (let ci = 0; ci < colsArr.length; ci++) {
+                            const col = colsArr[ci];
+                            const input = cells[ci + 1]?.querySelector('input');
+                            if (input) input.value = rowData[col.key] ?? '';
+                        }
+                    });
+                    // Update header labels (and remove buttons)
+                    const headerCells = Array.from(thead.children).filter(th => !th.classList.contains('action-header') && th.cellIndex !== 0);
+                    colsArr.forEach((col, idx) => {
+                        if (headerCells[idx]) {
+                            const btn = headerCells[idx].querySelector('.remove-col-btn');
+                            headerCells[idx].innerHTML = `${escapeHtml(col.label)}${btn ? btn.outerHTML : ''}`;
+                        }
+                    });
                 }});
             }
         }
@@ -313,24 +337,16 @@
             const canEdit = perms.edit, canDel = perms.deleteRow, canDrag = perms.dragRows || false;
             data.forEach((row, idx) => {
                 const tr = document.createElement("tr");
-                // Drag handle cell
                 const tdHandle = document.createElement("td"); tdHandle.style.width = "30px"; tdHandle.style.textAlign = "center";
-                if (canDrag) {
-                    tdHandle.className = "drag-handle";
-                    tdHandle.innerHTML = "☰";
-                    tdHandle.title = "Drag to reorder";
-                } else {
-                    tdHandle.innerHTML = "";
-                }
+                if (canDrag) { tdHandle.className = "drag-handle"; tdHandle.innerHTML = "☰"; tdHandle.title = "Drag to reorder"; }
+                else { tdHandle.innerHTML = ""; }
                 tr.appendChild(tdHandle);
-                // Data cells
                 cols.forEach(col => {
                     const td = document.createElement("td"); const inp = document.createElement("input");
                     inp.type = "text"; inp.className = "cell-input"; inp.value = row[col.key] ?? ""; inp.disabled = !(isAdmin || canEdit);
                     if (!inp.disabled) inp.addEventListener("input", async (e) => { row[col.key] = e.target.value; await saveDataToStorage(); });
                     td.appendChild(inp); tr.appendChild(td);
                 });
-                // Action cell
                 const tdAct = document.createElement("td"); tdAct.className = "action-cell";
                 const delBtn = document.createElement("button"); delBtn.innerText = "🗑️"; delBtn.className = "delete-btn"; delBtn.disabled = !(isAdmin || canDel);
                 if (!delBtn.disabled) delBtn.addEventListener("click", async () => { if (data.length === 1) { alert("Cannot delete last row."); return; } if (confirm(`Delete row #${idx+1}?`)) { data.splice(idx, 1); await saveDataToStorage(); renderFullApp(); await logActivity(currentUser?.email, `Deleted row in ${tableName}`, `Row ${idx}`); } });
@@ -361,9 +377,17 @@
             const isAdmin = userRole === 'admin', isViewer = userRole === 'viewer';
             let viewerPerms = null; if (isViewer) { ensureViewerPermissions(currentUser.uid); viewerPerms = viewerPermissions[currentUser.uid]; }
 
+            // Build permission objects for each table, ensuring admin gets full rights
+            const getEffectivePerms = (tablePerms) => {
+                if (isAdmin) return { view: true, edit: true, addRow: true, deleteRow: true, addColumn: true, deleteColumn: true, dragRows: true, dragColumns: true };
+                return tablePerms || getDefaultTablePerms();
+            };
+            const invP = getEffectivePerms(viewerPerms?.invoice);
+            const accP = getEffectivePerms(viewerPerms?.accounts);
+            const fibP = getEffectivePerms(viewerPerms?.fib);
+
             const renderHeaders = (cols, table, perms, canDragCols) => cols.map(c => `<th class="${canDragCols ? 'draggable-column' : ''}">${escapeHtml(c.label)}${ (isAdmin || (perms?.deleteColumn)) ? `<button class="remove-col-btn" data-table="${table}" data-key="${c.key}">✖</button>` : '' }</th>`).join('');
-            let invP = isAdmin ? null : (viewerPerms?.invoice || getDefaultTablePerms()), accP = isAdmin ? null : (viewerPerms?.accounts || getDefaultTablePerms()), fibP = isAdmin ? null : (viewerPerms?.fib || getDefaultTablePerms());
-            const invDC = isAdmin ? true : (invP?.dragColumns||false), accDC = isAdmin ? true : (accP?.dragColumns||false), fibDC = isAdmin ? true : (fibP?.dragColumns||false);
+            const invDC = invP.dragColumns, accDC = accP.dragColumns, fibDC = fibP.dragColumns;
             let sections = '';
             if (isAdmin || invP.view) sections += `<div class="section"><div class="section-header"><div class="section-title">📄 Invoice Master Grid</div><div class="table-actions" id="invoice-actions-container"></div></div><div class="table-wrapper"><table class="editable-table" id="invoice-table"><thead><tr><th style="width:30px;"></th>${renderHeaders(invoiceColumns, 'invoice', invP, invDC)}<th class="action-header">Action</th></tr></thead><tbody id="invoice-tbody"></tbody></table></div></div>`;
             if (isAdmin || accP.view) sections += `<div class="section"><div class="section-header"><div class="section-title">💰 Accounts Summary</div><div class="table-actions" id="accounts-actions-container"></div></div><div class="table-wrapper"><table class="editable-table" id="accounts-table"><thead><tr><th style="width:30px;"></th>${renderHeaders(accountsColumns, 'accounts', accP, accDC)}<th class="action-header">Action</th></tr></thead><tbody id="accounts-tbody"></tbody></table></div></div>`;
@@ -383,11 +407,9 @@
                 <div class="info-bar"><div>${isAdmin ? 'Admin: full control' : 'Limited by permissions'}</div><div>Firebase · Baghdad Time · Drag & Drop</div></div></div>`;
 
             const refresh = () => {
-                const invDR = isAdmin ? true : (invP?.dragRows||false), accDR = isAdmin ? true : (accP?.dragRows||false), fibDR = isAdmin ? true : (fibP?.dragRows||false);
-                const invDC2 = isAdmin ? true : (invP?.dragColumns||false), accDC2 = isAdmin ? true : (accP?.dragColumns||false), fibDC2 = isAdmin ? true : (fibP?.dragColumns||false);
-                if (document.getElementById("invoice-tbody")) { renderDynamicTable("invoice-tbody", invoiceData, invoiceColumns, isAdmin, "Invoice", invP||getDefaultTablePerms()); initDraggableTable("invoice-table", invoiceData, invoiceColumns, "Invoice", invDR, invDC2); }
-                if (document.getElementById("accounts-tbody")) { renderDynamicTable("accounts-tbody", accountsData, accountsColumns, isAdmin, "Accounts", accP||getDefaultTablePerms()); initDraggableTable("accounts-table", accountsData, accountsColumns, "Accounts", accDR, accDC2); }
-                if (document.getElementById("fib-tbody")) { renderDynamicTable("fib-tbody", fibData, fibColumns, isAdmin, "FIB", fibP||getDefaultTablePerms()); initDraggableTable("fib-table", fibData, fibColumns, "FIB", fibDR, fibDC2); }
+                if (document.getElementById("invoice-tbody")) { renderDynamicTable("invoice-tbody", invoiceData, invoiceColumns, isAdmin, "Invoice", invP); initDraggableTable("invoice-table", invoiceData, invoiceColumns, "Invoice", invP.dragRows, invP.dragColumns); }
+                if (document.getElementById("accounts-tbody")) { renderDynamicTable("accounts-tbody", accountsData, accountsColumns, isAdmin, "Accounts", accP); initDraggableTable("accounts-table", accountsData, accountsColumns, "Accounts", accP.dragRows, accP.dragColumns); }
+                if (document.getElementById("fib-tbody")) { renderDynamicTable("fib-tbody", fibData, fibColumns, isAdmin, "FIB", fibP); initDraggableTable("fib-table", fibData, fibColumns, "FIB", fibP.dragRows, fibP.dragColumns); }
                 if (isAdmin) document.querySelectorAll('.remove-col-btn').forEach(b => b.addEventListener('click', async (e) => { const tbl = b.dataset.table, key = b.dataset.key; if (confirm("Remove column?")) { await removeColumnFromTable(tbl, key); renderFullApp(); } }));
             };
             refresh();
@@ -403,7 +425,7 @@
                     document.querySelectorAll('.reject-btn').forEach(b => b.addEventListener('click', async () => { if (confirm("Reject?")) { await rejectRequest(b.dataset.id); renderFullApp(); } }));
                 } else reqDiv.innerHTML = "<div>No pending requests.</div>";
 
-                // Action buttons for each table (abbreviated but fully functional)
+                // Action buttons
                 const invDiv = document.getElementById("invoice-actions-container"); if (invDiv) { invDiv.innerHTML = `<button class="btn btn-success" id="add_invoice_row">➕ Add Row</button><button class="btn btn-primary" id="add_invoice_col">➕ Add Column</button><button class="btn btn-primary" id="save_invoice_btn">💾 Save</button><button class="btn btn-warning" id="reset_invoice_btn">⟳ Reset</button>`; document.getElementById("add_invoice_row")?.addEventListener("click", async () => { const nr = {}; invoiceColumns.forEach(c => nr[c.key] = ""); invoiceData.push(nr); await saveDataToStorage(); refresh(); await logActivity(currentUser.email,"Added invoice row"); }); document.getElementById("add_invoice_col")?.addEventListener("click", async () => { const n = prompt("Column name:"); if(n) { await addColumnToTable('invoice', n); renderFullApp(); } }); document.getElementById("save_invoice_btn")?.addEventListener("click", async () => { await saveDataToStorage(); alert("Saved."); }); document.getElementById("reset_invoice_btn")?.addEventListener("click", async () => { if(confirm("Reset?")){ invoiceColumns = JSON.parse(JSON.stringify(DEFAULT_INVOICE_COLUMNS)); invoiceData = []; await saveAllToStorage(); await loadColumnsAndData(); renderFullApp(); await logActivity(currentUser.email,"Reset Invoice"); } }); }
                 const accDiv = document.getElementById("accounts-actions-container"); if (accDiv) { accDiv.innerHTML = `<button class="btn btn-success" id="add_accounts_row">➕ Add Row</button><button class="btn btn-primary" id="add_accounts_col">➕ Add Column</button><button class="btn btn-primary" id="save_accounts_btn">💾 Save</button><button class="btn btn-warning" id="reset_accounts_btn">⟳ Reset</button>`; document.getElementById("add_accounts_row")?.addEventListener("click", async () => { const nr = {}; accountsColumns.forEach(c => nr[c.key] = ""); accountsData.push(nr); await saveDataToStorage(); refresh(); await logActivity(currentUser.email,"Added accounts row"); }); document.getElementById("add_accounts_col")?.addEventListener("click", async () => { const n = prompt("Column name:"); if(n) { await addColumnToTable('accounts', n); renderFullApp(); } }); document.getElementById("save_accounts_btn")?.addEventListener("click", async () => { await saveDataToStorage(); alert("Saved."); }); document.getElementById("reset_accounts_btn")?.addEventListener("click", async () => { if(confirm("Reset?")){ accountsColumns = JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS_COLUMNS)); accountsData = []; await saveAllToStorage(); await loadColumnsAndData(); renderFullApp(); await logActivity(currentUser.email,"Reset Accounts"); } }); }
                 const fibDiv = document.getElementById("fib-actions-container"); if (fibDiv) { fibDiv.innerHTML = `<button class="btn btn-success" id="add_fib_row">➕ Add Row</button><button class="btn btn-primary" id="add_fib_col">➕ Add Column</button><button class="btn btn-primary" id="save_fib_btn">💾 Save</button><button class="btn btn-warning" id="reset_fib_btn">⟳ Reset</button>`; document.getElementById("add_fib_row")?.addEventListener("click", async () => { const nr = {}; fibColumns.forEach(c => nr[c.key] = ""); fibData.push(nr); await saveDataToStorage(); refresh(); await logActivity(currentUser.email,"Added FIB row"); }); document.getElementById("add_fib_col")?.addEventListener("click", async () => { const n = prompt("Column name:"); if(n) { await addColumnToTable('fib', n); renderFullApp(); } }); document.getElementById("save_fib_btn")?.addEventListener("click", async () => { await saveDataToStorage(); alert("Saved."); }); document.getElementById("reset_fib_btn")?.addEventListener("click", async () => { if(confirm("Reset?")){ fibColumns = JSON.parse(JSON.stringify(DEFAULT_FIB_COLUMNS)); fibData = []; await saveAllToStorage(); await loadColumnsAndData(); renderFullApp(); await logActivity(currentUser.email,"Reset FIB"); } }); }
