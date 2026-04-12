@@ -1,0 +1,150 @@
+/* Finance Vault — Complementary Styles */
+/* This file provides base styles and print optimizations */
+
+/* Base Reset */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+/* Prevent iOS Safari auto-zoom on input focus */
+@media screen and (max-width: 768px) {
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="number"],
+    input[type="search"],
+    input[type="tel"],
+    input[type="url"],
+    select,
+    textarea {
+        font-size: 16px !important;
+    }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 20px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* Firefox scrollbar */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+}
+
+/* Print Styles */
+@media print {
+    body {
+        background: white !important;
+        padding: 0 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    .no-print {
+        display: none !important;
+    }
+
+    .section-card {
+        box-shadow: none !important;
+        border: 1px solid #000 !important;
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+
+    .cell-input {
+        border: none !important;
+        background: transparent !important;
+        padding: 2px 4px !important;
+        box-shadow: none !important;
+        font-size: 10pt !important;
+    }
+
+    .drag-handle,
+    .delete-btn,
+    .action-cell,
+    .remove-col-btn,
+    .table-actions {
+        display: none !important;
+    }
+
+    .editable-table {
+        border: 1px solid #000 !important;
+    }
+
+    .editable-table th,
+    .editable-table td {
+        border: 1px solid #999 !important;
+        padding: 4px 6px !important;
+    }
+
+    .editable-table th {
+        background: #f0f0f0 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+}
+
+/* Focus Visible — Accessibility */
+:focus-visible {
+    outline: 2px solid #3373ff;
+    outline-offset: 2px;
+}
+
+.cell-input:focus-visible {
+    outline: none;
+}
+
+/* Touch Target Minimum — Mobile Accessibility */
+@media (pointer: coarse) {
+    .btn,
+    .admin-tab,
+    .tab-btn-auth,
+    .delete-btn,
+    .remove-col-btn,
+    .remove-colleague,
+    button {
+        min-height: 44px;
+    }
+}
+
+/* Prevent text selection on interactive elements */
+.drag-handle,
+.delete-btn,
+.remove-col-btn {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* Smooth scrolling */
+#activityLogContainer {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Smooth horizontal scroll for tables on touch devices */
+.overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scroll-behavior: smooth;
+}
+
+/* Prevent whole-page horizontal scroll */
+html, body {
+    overflow-x: hidden;
+    width: 100%;
+}
