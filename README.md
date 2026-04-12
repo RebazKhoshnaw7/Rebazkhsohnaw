@@ -5,7 +5,7 @@ colorTo: purple
 sdk: static
 emoji: 📱
 tags:
-  - deepsite-v4
+  - rebaz
 ---
 
 # Finance Vault Pro 💰
