@@ -135,3 +135,16 @@
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
 }
+
+/* Smooth horizontal scroll for tables on touch devices */
+.overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scroll-behavior: smooth;
+}
+
+/* Prevent whole-page horizontal scroll */
+html, body {
+    overflow-x: hidden;
+    width: 100%;
+}
