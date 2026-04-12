@@ -10,4 +10,4 @@ tags:
 
 # Finance Vault Pro 💰
 
-This project has been created with [DeepSite](https://deepsite.hf.co) AI Vibe Coding.
+This project has been created with Rebaz.
