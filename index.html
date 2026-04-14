@@ -262,6 +262,22 @@
             transition: background 0.15s;
         }
         .cell-color-clear-btn:hover { background: #fef2f2; }
+
+        /* Editable column labels */
+        .col-label-editable[data-can-rename="1"] {
+            cursor: text;
+            border-bottom: 1px dotted transparent;
+            transition: border-color 0.15s, color 0.15s;
+        }
+        .col-label-editable[data-can-rename="1"]:hover {
+            border-bottom-color: #94a3b8;
+            color: #3373ff;
+        }
+        .col-rename-input {
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            box-shadow: 0 0 0 3px rgba(51,115,255,0.15);
+        }
     </style>
 </head>
 <body class="bg-surface-100 min-h-screen">
@@ -432,8 +448,8 @@
         { key: "balance", label: "Balance we have" }, { key: "yesterdaySales", label: "yesterday sales" }
     ];
     const DEFAULT_FIB_COLUMNS = [
-        { key: "invoiceNo", label: "FIB Balance (Invoice No)" }, { key: "amount", label: "Amount" },
-        { key: "remaining", label: "Remaining Amount" }, { key: "status", label: "Status" }
+        { key: "invoiceNo", label: "Reference (Invoice No)" }, { key: "amount", label: "Amount Request" },
+        { key: "remaining", label: "Remaining Amount to be sent" }, { key: "status", label: "Status" }
     ];
 
     let invoiceData = [], accountsData = [], fibData = [];
@@ -724,7 +740,7 @@
                             <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/></svg>
                             </div>
-                            <h4 class="font-bold text-purple-900 text-sm">FIB Balance</h4>
+                            <h4 class="font-bold text-purple-900 text-sm">FIB Balance Request Details</h4>
                         </div>
                     </div>
                     <div class="p-4 space-y-2.5">
@@ -963,6 +979,7 @@
         if (canDragColumns) {
             thead._sortable = new Sortable(thead, {
                 animation: 150, draggable: 'th.draggable-column',
+                filter: '.col-rename-input',
                 delay: 100, delayOnTouchOnly: true,
                 onEnd: async (evt) => {
                     const oldIndex = evt.oldDraggableIndex, newIndex = evt.newDraggableIndex;
@@ -1270,7 +1287,7 @@
         // Only include tables where user has BOTH view AND the mode permission (print/share)
         if (invP.view && invP[permKey]) html += buildTable(invoiceData, invoiceColumns, 'Invoice Master Grid', '#1a53f5');
         if (accP.view && accP[permKey]) html += buildTable(accountsData, accountsColumns, 'Accounts Summary', '#059669');
-        if (fibP.view && fibP[permKey]) html += buildTable(fibData, fibColumns, 'FIB Balance', '#7c3aed');
+        if (fibP.view && fibP[permKey]) html += buildTable(fibData, fibColumns, 'FIB Balance Request Details', '#7c3aed');
 
         // Check if any table was actually included
         const hasContent = html.indexOf('margin-bottom:28px') !== -1;
@@ -1343,7 +1360,7 @@
 
         const renderHeaders = (cols, table, perms, canDragCols) => cols.map(c =>
             `<th class="draggable-column px-3 py-3 text-left text-xs font-semibold text-surface-600 uppercase tracking-wider bg-surface-50/80 border-b border-surface-200 ${canDragCols ? 'cursor-grab active:cursor-grabbing' : ''}">
-                <span>${escapeHtml(c.label)}</span>${(isAdmin || perms?.deleteColumn) ? `<button class="remove-col-btn ml-1.5 text-red-400 hover:text-red-600 text-[10px] font-bold" data-table="${table}" data-key="${c.key}" title="Remove column">✖</button>` : ''}
+                <span class="col-label-editable" data-table="${table}" data-key="${c.key}" data-can-rename="${(isAdmin || perms?.addColumn) ? '1' : '0'}" ${(isAdmin || perms?.addColumn) ? 'title="Double-click to rename"' : ''}>${escapeHtml(c.label)}</span>${(isAdmin || perms?.deleteColumn) ? `<button class="remove-col-btn ml-1.5 text-red-400 hover:text-red-600 text-[10px] font-bold" data-table="${table}" data-key="${c.key}" title="Remove column">✖</button>` : ''}
             </th>`).join('');
 
         const invDC = invP.dragColumns, accDC = accP.dragColumns, fibDC = fibP.dragColumns;
@@ -1413,7 +1430,7 @@
                         <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600">
                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/></svg>
                         </div>
-                        <h2 class="text-sm sm:text-lg font-bold bg-gradient-to-r from-purple-700 to-purple-900 bg-clip-text text-transparent">FIB Balance</h2>
+                        <h2 class="text-sm sm:text-lg font-bold bg-gradient-to-r from-purple-700 to-purple-900 bg-clip-text text-transparent">FIB Balance Request Details</h2>
                     </div>
                     <div class="flex flex-wrap gap-1.5 sm:gap-2" id="fib-actions-container">${renderTableActionBtns('fib', fibP)}</div>
                 </div>
@@ -1636,6 +1653,61 @@
         };
         refresh();
 
+        // Double-click to rename column
+        delegateEvent('.app-container', 'dblclick', '.col-label-editable', function(e) {
+            if (this.dataset.canRename !== '1') return;
+            e.stopPropagation();
+            e.preventDefault();
+
+            const span = this;
+            const tableName = span.dataset.table;
+            const colKey = span.dataset.key;
+            const currentLabel = span.textContent.trim();
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = currentLabel;
+            input.className = 'col-rename-input w-full bg-white border border-brand-400 rounded px-1.5 py-0.5 text-xs font-semibold text-surface-800 outline-none';
+
+            span.textContent = '';
+            span.appendChild(input);
+            input.focus();
+            input.select();
+
+            let saved = false;
+
+            const save = async () => {
+                if (saved) return;
+                saved = true;
+                const newLabel = input.value.trim() || currentLabel;
+                let cols;
+                if (tableName === 'invoice') cols = invoiceColumns;
+                else if (tableName === 'accounts') cols = accountsColumns;
+                else cols = fibColumns;
+
+                const col = cols.find(c => c.key === colKey);
+                if (col && col.label !== newLabel) {
+                    col.label = newLabel;
+                    await saveColumnsToStorage();
+                    await logActivity(currentUser?.email, `Renamed column in ${tableName}`, `${currentLabel} → ${newLabel}`);
+                    showToast(`Column renamed to "${newLabel}"`, 'success');
+                }
+                renderFullApp();
+            };
+
+            const cancel = () => {
+                if (saved) return;
+                saved = true;
+                renderFullApp();
+            };
+
+            input.addEventListener('blur', save);
+            input.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); }
+                if (ev.key === 'Escape') { input.removeEventListener('blur', save); cancel(); }
+            });
+        });
+
         // Admin tab switching
         if (isAdmin) {
             document.querySelectorAll('.admin-tab').forEach(t => t.addEventListener('click', () => {
@@ -1774,7 +1846,7 @@
                     { bg: '#fff1f2', border: '#e11d48', text: '#be123c', dot: '#f43f5e' },   // rose
                 ];
                 const tables = ['invoice','accounts','fib','dailyReport'];
-                const tableDisplayNames = { invoice: 'Invoice', accounts: 'Accounts', fib: 'FIB', dailyReport: 'Daily Report' };
+                const tableDisplayNames = { invoice: 'Invoice', accounts: 'Accounts', fib: 'FIB Balance Request Details', dailyReport: 'Daily Report' };
                 for (let vi = 0; vi < viewers.length; vi++) {
                     const uid = viewers[vi];
                     const email = (await fbGet(`viewers/${uid}`)) || uid;
