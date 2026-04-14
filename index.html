@@ -518,7 +518,7 @@
         return { view: true, edit: false, addRow: false, deleteRow: false, addColumn: false, deleteColumn: false, dragRows: false, dragColumns: false, print: false, share: false };
     }
     function getDefaultViewerPermissions() {
-        return { invoice: getDefaultTablePerms(), accounts: getDefaultTablePerms(), fib: getDefaultTablePerms(), dailyReport: getDefaultTablePerms() };
+        return { invoice: getDefaultTablePerms(), accounts: getDefaultTablePerms(), fib: getDefaultTablePerms(), dailyReport: getDefaultTablePerms(), dashboard: getDefaultTablePerms() };
     }
 
     async function loadPermissions() {
@@ -526,7 +526,7 @@
         viewerPermissions = perms;
         Object.keys(viewerPermissions).forEach(uid => {
             if (!viewerPermissions[uid]) viewerPermissions[uid] = getDefaultViewerPermissions();
-            ['invoice','accounts','fib','dailyReport'].forEach(t => {
+            ['invoice','accounts','fib','dailyReport','dashboard'].forEach(t => {
                 if (!viewerPermissions[uid][t]) viewerPermissions[uid][t] = getDefaultTablePerms();
                 if (viewerPermissions[uid][t]) {
                     if (viewerPermissions[uid][t].dragRows === undefined) viewerPermissions[uid][t].dragRows = false;
@@ -639,8 +639,8 @@
         }
     }
 
-    function renderDashboard() {
-        const c = document.getElementById("dashboardContent");
+    function renderDashboard(containerId = "dashboardContent") {
+        const c = document.getElementById(containerId);
         if (!c) return;
 
         // Invoice totals
@@ -1348,7 +1348,7 @@
             return tablePerms || getDefaultTablePerms();
         };
 
-        const invP = getEffectivePerms(viewerPerms?.invoice), accP = getEffectivePerms(viewerPerms?.accounts), fibP = getEffectivePerms(viewerPerms?.fib), drP = getEffectivePerms(viewerPerms?.dailyReport);
+        const invP = getEffectivePerms(viewerPerms?.invoice), accP = getEffectivePerms(viewerPerms?.accounts), fibP = getEffectivePerms(viewerPerms?.fib), drP = getEffectivePerms(viewerPerms?.dailyReport), dashP = getEffectivePerms(viewerPerms?.dashboard);
 
         const renderTableActionBtns = (table, perms) => {
             let btns = '';
@@ -1368,6 +1368,24 @@
         const canShareAny = isAdmin || (invP.share || accP.share || fibP.share);
 
         let sections = '';
+
+        // Dashboard Overview section for viewers
+        if (!isAdmin && dashP.view) {
+            sections += `
+            <div class="section-card bg-white rounded-2xl border border-surface-200/60 shadow-sm overflow-hidden fade-in-up" style="animation-delay:0s">
+                <div class="flex flex-wrap items-center justify-between gap-2 sm:gap-3 px-3 sm:px-6 py-3 sm:py-4 bg-gradient-to-r from-brand-50/60 to-white border-b border-surface-200">
+                    <div class="flex items-center gap-2 sm:gap-2.5">
+                        <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-brand-100 flex items-center justify-center text-brand-600">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                        </div>
+                        <h2 class="text-sm sm:text-lg font-bold bg-gradient-to-r from-brand-700 to-brand-900 bg-clip-text text-transparent">Dashboard Overview</h2>
+                    </div>
+                </div>
+                <div class="px-3 sm:px-6 py-3 sm:py-4">
+                    <div id="viewerDashboardContent"></div>
+                </div>
+            </div>`;
+        }
 
         // Invoice section
         if (isAdmin || invP.view) {
@@ -1845,8 +1863,8 @@
                     { bg: '#fdf4ff', border: '#a855f7', text: '#9333ea', dot: '#c084fc' },   // violet
                     { bg: '#fff1f2', border: '#e11d48', text: '#be123c', dot: '#f43f5e' },   // rose
                 ];
-                const tables = ['invoice','accounts','fib','dailyReport'];
-                const tableDisplayNames = { invoice: 'Invoice', accounts: 'Accounts', fib: 'FIB Balance Request Details', dailyReport: 'Daily Report' };
+                const tables = ['invoice','accounts','fib','dailyReport','dashboard'];
+                const tableDisplayNames = { invoice: 'Invoice', accounts: 'Accounts', fib: 'FIB Balance Request Details', dailyReport: 'Daily Report', dashboard: 'Dashboard Overview' };
                 for (let vi = 0; vi < viewers.length; vi++) {
                     const uid = viewers[vi];
                     const email = (await fbGet(`viewers/${uid}`)) || uid;
@@ -1928,6 +1946,11 @@
                 if (logActionFilter) logActionFilter.value = '';
                 renderActivityLog();
             });
+        }
+
+        // Viewer Dashboard
+        if (!isAdmin) {
+            renderDashboard("viewerDashboardContent");
         }
 
         // Daily Reports event handlers (works for both admin and viewer)
