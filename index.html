@@ -387,8 +387,8 @@
             height: calc(100% + 4px);
         }
         .robot-eye.peek .robot-eyelid {
-            top: 40%;
-            height: 60%;
+            top: 60%;
+            height: 40%;
         }
         .robot-mouth {
             width: 16px;
@@ -2262,7 +2262,7 @@
             pwdGrp.style.display = m === 'login' ? 'block' : 'none';
             forgot.style.display = m === 'login' ? 'block' : 'none';
             err.classList.add('hidden');
-            // Reset robot eyes & password visibility
+            // Reset Robot eyes & password visibility
             passwordVisible = false;
             if (pwdInp) pwdInp.type = 'password';
             const rL = document.getElementById('robotEyeL'), rR = document.getElementById('robotEyeR'), rH = document.getElementById('robotHead');
