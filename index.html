@@ -617,8 +617,8 @@
         const d = new Date();
         return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
     }
-    function formatBaghdadDateTime(iso) { return new Date(iso).toLocaleString('en-IQ', { timeZone: 'Asia/Baghdad' }); }
-    function formatBaghdadDate(iso) { return new Date(iso).toLocaleDateString('en-IQ', { timeZone: 'Asia/Baghdad' }); }
+    function formatBaghdadDateTime(iso) { if (!iso) return '—'; try { return new Date(iso).toLocaleString('en-IQ', { timeZone: 'Asia/Baghdad' }); } catch(e) { return '—'; } }
+    function formatBaghdadDate(iso) { if (!iso) return '—'; try { return new Date(iso).toLocaleDateString('en-IQ', { timeZone: 'Asia/Baghdad' }); } catch(e) { return '—'; } }
 
     const PATHS = {
         USER_ROLES: 'userRoles', COLUMNS: 'columns', DATA: 'data',
@@ -631,14 +631,33 @@
     async function fbUpdate(path, data) { try { await update(ref(db, path), data); } catch(e) { console.error('fbUpdate error:', e); } }
     async function fbPush(path, data) { try { const nr = push(ref(db, path)); await set(nr, data); return nr.key; } catch(e) { console.error('fbPush error:', e); return null; } }
 
+    function sanitizeArray(data) {
+        if (!data) return [];
+        if (Array.isArray(data)) return data.filter(v => v != null);
+        try {
+            return Object.keys(data).sort((a, b) => Number(a) - Number(b)).map(k => data[k]).filter(v => v != null && typeof v === 'object');
+        } catch (e) { return []; }
+    }
+
+    function sanitizeRow(row, cols) {
+        if (!row || typeof row !== 'object') {
+            const nr = { _cellColors: {} };
+            cols.forEach(c => nr[c.key] = '');
+            return nr;
+        }
+        if (!row._cellColors) row._cellColors = {};
+        cols.forEach(c => { if (row[c.key] == null) row[c.key] = ''; });
+        return row;
+    }
+
     async function loadColumnsAndData() {
         try {
             const cols = await fbGet(PATHS.COLUMNS) || {};
-            invoiceColumns = cols.invoice || [...DEFAULT_INVOICE_COLUMNS];
-            accountsColumns = cols.accounts || [...DEFAULT_ACCOUNTS_COLUMNS];
-            fibColumns = cols.fib || [...DEFAULT_FIB_COLUMNS];
+            invoiceColumns = sanitizeArray(cols.invoice).length ? sanitizeArray(cols.invoice) : [...DEFAULT_INVOICE_COLUMNS];
+            accountsColumns = sanitizeArray(cols.accounts).length ? sanitizeArray(cols.accounts) : [...DEFAULT_ACCOUNTS_COLUMNS];
+            fibColumns = sanitizeArray(cols.fib).length ? sanitizeArray(cols.fib) : [...DEFAULT_FIB_COLUMNS];
             const data = await fbGet(PATHS.DATA) || {};
-            invoiceData = data.invoice || []; accountsData = data.accounts || []; fibData = data.fib || [];
+            invoiceData = sanitizeArray(data.invoice); accountsData = sanitizeArray(data.accounts); fibData = sanitizeArray(data.fib);
 
             if (!invoiceData.length) invoiceData = [
                 { area:"Erbil To Baghdad", invoiceNo:"12888407", submissionDate:"29-Mar-26", daysOutstand:"8", company:"Mintroute", amount:"IQD 1,450,000,000", exchangeRate:"", bankStatus:"N/A", topUpStatus:"Not Received" },
@@ -656,6 +675,11 @@
                 { invoiceNo:"T14", amount:"$1,000,000.00", remaining:"$500,000.00", status:"Remaining" },
                 { invoiceNo:"T15", amount:"$1,000,000.00", remaining:"$1,000,000.00", status:"Pending To Pay" }
             ].map(r => { let nr = { _cellColors: {} }; fibColumns.forEach(c => nr[c.key] = r[c.key] || ""); return nr; });
+
+            // Sanitize all rows to ensure no null/undefined values slip through
+            invoiceData = invoiceData.map(r => sanitizeRow(r, invoiceColumns));
+            accountsData = accountsData.map(r => sanitizeRow(r, accountsColumns));
+            fibData = fibData.map(r => sanitizeRow(r, fibColumns));
 
             await saveAllToStorage();
         } catch(e) { console.error(e); }
@@ -726,7 +750,7 @@
         renderFullApp();
     }
 
-    async function loadActivityLog() { const log = await fbGet(PATHS.ACTIVITY_LOG); activityLog = log ? (Array.isArray(log) ? log : Object.values(log)) : []; }
+    async function loadActivityLog() { const log = await fbGet(PATHS.ACTIVITY_LOG); activityLog = log ? (Array.isArray(log) ? log : Object.values(log)).filter(e => e && typeof e === 'object') : []; }
     async function saveActivityLog() { if (activityLog.length > MAX_LOG_ENTRIES) activityLog = activityLog.slice(-MAX_LOG_ENTRIES); await fbSet(PATHS.ACTIVITY_LOG, activityLog); }
     async function logActivity(userEmail, action, details = "") {
         activityLog.push({ timestamp: new Date().toISOString(), userEmail, action, details });
@@ -796,113 +820,48 @@
         const c = document.getElementById(containerId);
         if (!c) return;
 
-        // Invoice totals
-        let invUsd = 0, invIqd = 0;
-        invoiceData.forEach(r => {
-            const amt = r.amount || "";
-            if (amt.includes("$")) invUsd += extractNumericAmount(amt);
-            else if (amt.includes("IQD")) invIqd += extractNumericAmount(amt);
+        // Find specific account rows from Accounts Summary
+        const findAccount = (search, exclude) => accountsData.find(r => {
+            const acc = (r.account || '').toLowerCase();
+            return acc.includes(search.toLowerCase()) && (!exclude || !acc.includes(exclude.toLowerCase()));
         });
 
-        // Accounts totals
-        let accBalance = 0, accSales = 0;
-        accountsData.forEach(r => {
-            accBalance += extractNumericAmount(r.balance);
-            accSales += extractNumericAmount(r.yesterdaySales);
-        });
+        const mintrouteAcc = findAccount('Mintroute', 'FIB');
+        const likecardAcc = findAccount('LikeCard');
+        const onecardAcc = findAccount('OneCard');
+        const fibAcc = findAccount('FIB');
 
-        // FIB totals
-        let fibAmount = 0, fibRemaining = 0;
-        fibData.forEach(r => {
-            fibAmount += extractNumericAmount(r.amount);
-            fibRemaining += extractNumericAmount(r.remaining);
-        });
-
-        const totalRows = invoiceData.length + accountsData.length + fibData.length;
-        const totalUsd = invUsd + accBalance + fibAmount;
+        const mintrouteBal = mintrouteAcc ? extractNumericAmount(mintrouteAcc.balance) : 0;
+        const mintrouteSales = mintrouteAcc ? extractNumericAmount(mintrouteAcc.yesterdaySales) : 0;
+        const likecardBal = likecardAcc ? extractNumericAmount(likecardAcc.balance) : 0;
+        const likecardSales = likecardAcc ? extractNumericAmount(likecardAcc.yesterdaySales) : 0;
+        const onecardBal = onecardAcc ? extractNumericAmount(onecardAcc.balance) : 0;
+        const onecardSales = onecardAcc ? extractNumericAmount(onecardAcc.yesterdaySales) : 0;
+        const fibBal = fibAcc ? extractNumericAmount(fibAcc.balance) : 0;
+        const fibSales = fibAcc ? extractNumericAmount(fibAcc.yesterdaySales) : 0;
 
         c.innerHTML = `
             <!-- Overview cards -->
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
                 <div class="bg-gradient-to-br from-brand-500 to-brand-700 rounded-2xl p-4 sm:p-5 text-white shadow-lg shadow-brand-200/50">
-                    <div class="text-[10px] sm:text-xs font-medium text-brand-100 mb-1">Total Rows</div>
-                    <div class="text-2xl sm:text-3xl font-bold">${totalRows}</div>
-                    <div class="text-[10px] sm:text-xs text-brand-200 mt-1">${invoiceData.length} Inv · ${accountsData.length} Acc · ${fibData.length} FIB</div>
+                    <div class="text-[10px] sm:text-xs font-medium text-brand-100 mb-1">FastPay Mintroute</div>
+                    <div class="text-2xl sm:text-3xl font-bold">${mintrouteBal.toLocaleString()}</div>
+                    <div class="text-[10px] sm:text-xs text-brand-200 mt-1">Yesterday: ${mintrouteSales.toLocaleString()}</div>
                 </div>
                 <div class="bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-2xl p-4 sm:p-5 text-white shadow-lg shadow-emerald-200/50">
-                    <div class="text-[10px] sm:text-xs font-medium text-emerald-100 mb-1">Total USD</div>
-                    <div class="text-2xl sm:text-3xl font-bold">${totalUsd.toLocaleString()}</div>
-                    <div class="text-[10px] sm:text-xs text-emerald-200 mt-1">Combined across all tables</div>
+                    <div class="text-[10px] sm:text-xs font-medium text-emerald-100 mb-1">FastPay LikeCard</div>
+                    <div class="text-2xl sm:text-3xl font-bold">${likecardBal.toLocaleString()}</div>
+                    <div class="text-[10px] sm:text-xs text-emerald-200 mt-1">Yesterday: ${likecardSales.toLocaleString()}</div>
                 </div>
                 <div class="bg-gradient-to-br from-amber-500 to-amber-700 rounded-2xl p-4 sm:p-5 text-white shadow-lg shadow-amber-200/50">
-                    <div class="text-[10px] sm:text-xs font-medium text-amber-100 mb-1">IQD Amount</div>
-                    <div class="text-2xl sm:text-3xl font-bold">${invIqd.toLocaleString()}</div>
-                    <div class="text-[10px] sm:text-xs text-amber-200 mt-1">From Invoice data</div>
+                    <div class="text-[10px] sm:text-xs font-medium text-amber-100 mb-1">FastPay OneCard</div>
+                    <div class="text-2xl sm:text-3xl font-bold">${onecardBal.toLocaleString()}</div>
+                    <div class="text-[10px] sm:text-xs text-amber-200 mt-1">Yesterday: ${onecardSales.toLocaleString()}</div>
                 </div>
                 <div class="bg-gradient-to-br from-purple-500 to-purple-700 rounded-2xl p-4 sm:p-5 text-white shadow-lg shadow-purple-200/50">
-                    <div class="text-[10px] sm:text-xs font-medium text-purple-100 mb-1">FIB Remaining</div>
-                    <div class="text-2xl sm:text-3xl font-bold">${fibRemaining.toLocaleString()}</div>
-                    <div class="text-[10px] sm:text-xs text-purple-200 mt-1">Of ${fibAmount.toLocaleString()} total</div>
-                </div>
-            </div>
-
-            <!-- Detail cards per table -->
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-6">
-                <!-- Invoice -->
-                <div class="bg-white rounded-2xl border border-surface-200 overflow-hidden">
-                    <div class="bg-gradient-to-r from-brand-50 to-brand-100/50 px-4 py-3 border-b border-surface-100">
-                        <div class="flex items-center gap-2">
-                            <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-brand-100 flex items-center justify-center text-brand-600">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
-                            </div>
-                            <h4 class="font-bold text-brand-900 text-sm">Invoice Master Grid</h4>
-                        </div>
-                    </div>
-                    <div class="p-4 space-y-2.5">
-                        <div class="flex justify-between text-sm"><span class="text-surface-500">Rows</span><span class="font-semibold text-surface-800">${invoiceData.length}</span></div>
-                        <div class="flex justify-between text-sm"><span class="text-surface-500">Columns</span><span class="font-semibold text-surface-800">${invoiceColumns.length}</span></div>
-                        <div class="h-px bg-surface-100 my-1"></div>
-                        <div class="flex justify-between text-sm"><span class="text-surface-500">USD Total</span><span class="font-bold text-emerald-700">${invUsd.toLocaleString()}</span></div>
-                        <div class="flex justify-between text-sm"><span class="text-surface-500">IQD Total</span><span class="font-bold text-amber-700">${invIqd.toLocaleString()}</span></div>
-                    </div>
-                </div>
-
-                <!-- Accounts -->
-                <div class="bg-white rounded-2xl border border-surface-200 overflow-hidden">
-                    <div class="bg-gradient-to-r from-emerald-50 to-emerald-100/50 px-4 py-3 border-b border-surface-100">
-                        <div class="flex items-center gap-2">
-                            <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
-                            </div>
-                            <h4 class="font-bold text-emerald-900 text-sm">Accounts Summary</h4>
-                        </div>
-                    </div>
-                    <div class="p-4 space-y-2.5">
-                        <div class="flex justify-between text-sm"><span class="text-surface-500">Rows</span><span class="font-semibold text-surface-800">${accountsData.length}</span></div>
-                        <div class="flex justify-between text-sm"><span class="text-surface-500">Columns</span><span class="font-semibold text-surface-800">${accountsColumns.length}</span></div>
-                        <div class="h-px bg-surface-100 my-1"></div>
-                        <div class="flex justify-between text-sm"><span class="text-surface-500">Total Balance</span><span class="font-bold text-emerald-700">${accBalance.toLocaleString()}</span></div>
-                        <div class="flex justify-between text-sm"><span class="text-surface-500">Yesterday Sales</span><span class="font-bold text-brand-700">${accSales.toLocaleString()}</span></div>
-                    </div>
-                </div>
-
-                <!-- FIB -->
-                <div class="bg-white rounded-2xl border border-surface-200 overflow-hidden">
-                    <div class="bg-gradient-to-r from-purple-50 to-purple-100/50 px-4 py-3 border-b border-surface-100">
-                        <div class="flex items-center gap-2">
-                            <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/></svg>
-                            </div>
-                            <h4 class="font-bold text-purple-900 text-sm">FIB Balance Request Details</h4>
-                        </div>
-                    </div>
-                    <div class="p-4 space-y-2.5">
-                        <div class="flex justify-between text-sm"><span class="text-surface-500">Rows</span><span class="font-semibold text-surface-800">${fibData.length}</span></div>
-                        <div class="flex justify-between text-sm"><span class="text-surface-500">Columns</span><span class="font-semibold text-surface-800">${fibColumns.length}</span></div>
-                        <div class="h-px bg-surface-100 my-1"></div>
-                        <div class="flex justify-between text-sm"><span class="text-surface-500">Total Amount</span><span class="font-bold text-emerald-700">${fibAmount.toLocaleString()}</span></div>
-                        <div class="flex justify-between text-sm"><span class="text-surface-500">Remaining</span><span class="font-bold text-amber-700">${fibRemaining.toLocaleString()}</span></div>
-                    </div>
+                    <div class="text-[10px] sm:text-xs font-medium text-purple-100 mb-1">FIB Mintroute</div>
+                    <div class="text-2xl sm:text-3xl font-bold">${fibBal.toLocaleString()}</div>
+                    <div class="text-[10px] sm:text-xs text-purple-200 mt-1">Yesterday: ${fibSales.toLocaleString()}</div>
                 </div>
             </div>
 
@@ -917,7 +876,7 @@
             </div>`;
     }
 
-    async function loadSnapshots() { snapshots = await fbGet(PATHS.SNAPSHOTS) || {}; }
+    async function loadSnapshots() { const s = await fbGet(PATHS.SNAPSHOTS); snapshots = (s && typeof s === 'object') ? s : {}; }
     async function saveSnapshots() { await fbSet(PATHS.SNAPSHOTS, snapshots); }
 
     async function saveCurrentSnapshot(date = null) {
@@ -1313,7 +1272,7 @@
             if (!delBtn.disabled) {
                 delBtn.addEventListener("click", async () => {
                     if (data.length === 1) { showToast("Cannot delete the last row.", "warning"); return; }
-                    if (confirm(`Delete row #${idx+1}?`)) {
+                    if (await customConfirm(`Delete row #${idx+1}?`, 'Delete Row', true)) {
                         data.splice(idx, 1);
                         await saveDataToStorage();
                         renderFullApp();
@@ -2350,7 +2309,7 @@
     }
 
     // ===== UTILITY =====
-    function escapeHtml(s) { return String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
+    function escapeHtml(s) { if (s == null) return ''; return String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
 
     // ===== BOOTSTRAP =====
     async function bootstrap() {
