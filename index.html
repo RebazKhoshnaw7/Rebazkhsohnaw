@@ -1,0 +1,2364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Finance Vault · Production Hardened</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+                    colors: {
+                        brand: {
+                            50: '#eef5ff', 100: '#d9e8ff', 200: '#bcd5ff', 300: '#8ebbff',
+                            400: '#5996ff', 500: '#3373ff', 600: '#1a53f5', 700: '#1340e1',
+                            800: '#1634b6', 900: '#18308f', 950: '#111d57'
+                        },
+                        surface: {
+                            50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 300: '#cbd5e1',
+                            400: '#94a3b8', 500: '#64748b', 600: '#475569', 700: '#334155',
+                            800: '#1e293b', 900: '#0f172a'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, set, get, update, push, child, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import {
+            getAuth,
+            signInWithEmailAndPassword,
+            createUserWithEmailAndPassword,
+            signOut,
+            sendPasswordResetEmail,
+            onAuthStateChanged
+        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        const firebaseConfig = {
+            apiKey: "AIzaSyCTEwQr-6z4y8JhkDPsjd6k0M-7J8cdnCg",
+            authDomain: "financerebaz.firebaseapp.com",
+            databaseURL: "https://financerebaz-default-rtdb.firebaseio.com",
+            projectId: "financerebaz",
+            storageBucket: "financerebaz.firebasestorage.app",
+            messagingSenderId: "476412084259",
+            appId: "1:476412084259:web:3c427cd171f4eba5e0b196",
+            measurementId: "G-7RL46G40CZ"
+        };
+        const app = initializeApp(firebaseConfig);
+        const secondaryApp = initializeApp(firebaseConfig, "Secondary");
+        const db = getDatabase(app);
+        const auth = getAuth(app);
+        const secondaryAuth = getAuth(secondaryApp);
+        window.db = db; window.auth = auth; window.secondaryAuth = secondaryAuth; window.firebaseRef = ref; window.firebaseSet = set;
+        window.firebaseGet = get; window.firebaseUpdate = update; window.firebasePush = push;
+        window.firebaseChild = child; window.firebaseOnValue = onValue; window.onAuthStateChanged = onAuthStateChanged;
+        window.signInWithEmailAndPassword = signInWithEmailAndPassword;
+        window.createUserWithEmailAndPassword = createUserWithEmailAndPassword;
+        window.signOut = signOut; window.sendPasswordResetEmail = sendPasswordResetEmail;
+        window.__firebaseReady = true;
+        window.dispatchEvent(new Event('firebase-ready'));
+        console.log('Firebase module ready');
+    </script>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Inter', system-ui, sans-serif; }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 20px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        /* Toast animations */
+        @keyframes toastIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        @keyframes toastOut { from { transform: translateX(0); opacity: 1; } to { transform: translateX(100%); opacity: 0; } }
+        .toast-enter { animation: toastIn 0.3s ease-out forwards; }
+        .toast-exit { animation: toastOut 0.3s ease-in forwards; }
+
+        /* Fade in animation */
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+        .fade-in-up { animation: fadeInUp 0.4s ease-out forwards; }
+
+        /* Loading spinner */
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spinner { width: 40px; height: 40px; border: 3px solid #e2e8f0; border-top-color: #3373ff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+
+        /* Sortable ghost */
+        .sortable-ghost { opacity: 0.35; background: #eef5ff !important; }
+        .sortable-chosen { background: #d9e8ff !important; }
+
+        /* Drag handle */
+        .drag-handle { cursor: grab; user-select: none; transition: all 0.15s; }
+        .drag-handle:hover { background: #e2e8f0; border-radius: 6px; color: #1a53f5; }
+        .drag-handle:active { cursor: grabbing; background: #cbd5e1; }
+
+        /* Cell input */
+        .cell-input { transition: all 0.15s; }
+        .cell-input:focus { outline: none; border-color: #3373ff; box-shadow: 0 0 0 3px rgba(51,115,255,0.15); }
+
+        /* Table row hover */
+        .data-row:hover { background: #f8fafc; }
+
+        /* Print styles — full page landscape layout */
+        @page { size: landscape; margin: 10mm; }
+        @media print {
+            html, body { background: white !important; padding: 0 !important; margin: 0 !important; width: 100% !important; overflow: visible !important; }
+            .no-print, .admin-panel, #toastContainer { display: none !important; }
+            .app-container { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
+            .sticky { position: static !important; }
+            .section-card { box-shadow: none !important; border: 1px solid #000 !important; break-inside: avoid; page-break-inside: avoid; margin: 0 !important; border-radius: 0 !important; }
+            .cell-input { border: none !important; padding: 2px 4px !important; box-shadow: none !important; font-size: 10pt !important; }
+            .cell-input:not(.has-cell-color) { background: transparent !important; }
+            .cell-input.has-cell-color { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .drag-handle, .delete-btn, .action-cell, .remove-col-btn, .table-actions { display: none !important; }
+            .overflow-x-auto { overflow: visible !important; }
+            .editable-table { border: 1px solid #000 !important; width: 100% !important; min-width: 0 !important; }
+            .editable-table th, .editable-table td { border: 1px solid #999 !important; padding: 4px 6px !important; white-space: normal !important; word-break: break-word !important; }
+            .editable-table th { background: #f0f0f0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .editable-table th:first-child, .editable-table td:first-child,
+            .editable-table th:last-child, .editable-table td:last-child { display: none !important; }
+            .fade-in-up { animation: none !important; opacity: 1 !important; }
+        }
+
+        /* Smooth tab transitions */
+        .tab-pane { display: none; opacity: 0; transition: opacity 0.2s; }
+        .tab-pane.active { display: block; opacity: 1; }
+
+        /* Permission checkbox styling */
+        .perm-checkbox { accent-color: #3373ff; width: 16px; height: 16px; cursor: pointer; }
+
+        /* Subtle pulse for badges */
+        @keyframes subtlePulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+        .badge-pulse { animation: subtlePulse 2s ease-in-out infinite; }
+
+        /* Modal animations */
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes scaleIn { from { opacity: 0; transform: scale(0.95) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+
+        /* Admin tab active — moved from JS injection to prevent duplicates */
+        .admin-tab.active { background: white; color: #1e293b; box-shadow: 0 -1px 4px rgba(0,0,0,0.05); font-weight: 600; }
+
+        /* Auth tab active — moved from JS injection to prevent duplicates */
+        .tab-btn-auth.active { background: white; color: #1e293b; box-shadow: 0 1px 3px rgba(0,0,0,0.08); font-weight: 600; }
+
+        /* Modal overlay & card */
+        .modal-overlay { animation: fadeIn 0.2s ease-out; }
+        .modal-card-custom { animation: scaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1); }
+        .modal-overlay.closing { animation: fadeOut 0.15s ease-in forwards; }
+        .modal-overlay.closing .modal-card-custom { transform: scale(0.95); opacity: 0; transition: all 0.15s ease-in; }
+
+        /* Better mobile input sizing — prevents iOS auto-zoom */
+        @media screen and (max-width: 767px) {
+            .cell-input { font-size: 16px !important; padding: 8px 10px !important; }
+            .modal-card-custom input { font-size: 16px !important; }
+            .editable-table th, .editable-table td { white-space: normal; }
+        }
+
+        /* Touch-friendly delete button on mobile */
+        @media (pointer: coarse) {
+            .delete-btn { padding: 8px !important; min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+            .drag-handle { padding: 8px 4px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+            .remove-col-btn { padding: 4px 8px; min-height: 36px; min-width: 36px; }
+        }
+
+        /* Horizontal scrolling for tables — optimized for mobile touch */
+        .overflow-x-auto {
+            -webkit-overflow-scrolling: touch;
+            overscroll-behavior-x: contain;
+            position: relative;
+            will-change: scroll-position;
+        }
+
+        /* Prevent whole-page horizontal scroll on mobile */
+        html, body {
+            overflow-x: hidden;
+            width: 100%;
+        }
+
+        /* Editable table — nowrap for big numbers, clean borders */
+        .editable-table th,
+        .editable-table td {
+            white-space: nowrap;
+        }
+
+        /* Cell Color Picker */
+        .cell-color-picker {
+            position: fixed;
+            z-index: 9998;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 12px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05);
+            width: 230px;
+            animation: scaleIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .cell-color-picker-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: #64748b;
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .color-swatch-grid {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 4px;
+            margin-bottom: 8px;
+        }
+        .color-swatch {
+            width: 22px;
+            height: 22px;
+            border-radius: 6px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.15s;
+        }
+        .color-swatch:hover {
+            transform: scale(1.2);
+            border-color: #3373ff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .color-swatch.active {
+            border-color: #1e293b;
+            box-shadow: 0 0 0 2px white, 0 0 0 4px #1e293b;
+        }
+        .cell-color-picker-actions {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            padding-top: 8px;
+            border-top: 1px solid #f1f5f9;
+        }
+        .cell-color-custom-input {
+            width: 28px;
+            height: 28px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            padding: 0;
+            background: none;
+        }
+        .cell-color-custom-input::-webkit-color-swatch-wrapper { padding: 2px; }
+        .cell-color-custom-input::-webkit-color-swatch { border: 1px solid #e2e8f0; border-radius: 4px; }
+        .cell-color-clear-btn {
+            font-size: 11px;
+            color: #ef4444;
+            cursor: pointer;
+            font-weight: 500;
+            padding: 4px 8px;
+            border-radius: 6px;
+            transition: background 0.15s;
+        }
+        .cell-color-clear-btn:hover { background: #fef2f2; }
+
+        /* Editable column labels */
+        .col-label-editable[data-can-rename="1"] {
+            cursor: text;
+            border-bottom: 1px dotted transparent;
+            transition: border-color 0.15s, color 0.15s;
+        }
+        .col-label-editable[data-can-rename="1"]:hover {
+            border-bottom-color: #94a3b8;
+            color: #3373ff;
+        }
+        .col-rename-input {
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            box-shadow: 0 0 0 3px rgba(51,115,255,0.15);
+        }
+
+        /* === Robot Face === */
+        .robot-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        .robot-face {
+            position: relative;
+            animation: robotIdle 3s ease-in-out infinite;
+        }
+        @keyframes robotIdle {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-4px); }
+        }
+        .robot-antenna {
+            position: absolute;
+            top: -18px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 4px;
+            height: 18px;
+            background: linear-gradient(to bottom, #3373ff, #1a53f5);
+            border-radius: 2px;
+        }
+        .robot-antenna-ball {
+            position: absolute;
+            top: -7px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 12px;
+            height: 12px;
+            background: #3373ff;
+            border-radius: 50%;
+            animation: antennaGlow 2s ease-in-out infinite;
+            box-shadow: 0 0 10px rgba(51,115,255,0.5);
+        }
+        @keyframes antennaGlow {
+            0%, 100% { opacity: 1; box-shadow: 0 0 10px rgba(51,115,255,0.5); }
+            50% { opacity: 0.5; box-shadow: 0 0 4px rgba(51,115,255,0.3); }
+        }
+        .robot-head {
+            position: relative;
+            width: 100px;
+            height: 80px;
+            background: linear-gradient(135deg, #f8fafc, #e2e8f0);
+            border-radius: 22px;
+            border: 2.5px solid #cbd5e1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding-top: 6px;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.06);
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .robot-head.typing {
+            transform: scaleY(0.92);
+        }
+        .robot-eyes {
+            display: flex;
+            gap: 14px;
+            margin-bottom: 8px;
+        }
+        .robot-eye {
+            position: relative;
+            width: 26px;
+            height: 26px;
+            background: white;
+            border-radius: 50%;
+            border: 2px solid #94a3b8;
+            overflow: hidden;
+        }
+        .robot-eyeball {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 12px;
+            height: 12px;
+            background: #1e293b;
+            border-radius: 50%;
+            transition: all 0.2s;
+        }
+        .robot-eyeball::after {
+            content: '';
+            position: absolute;
+            top: 1px;
+            right: 1px;
+            width: 4px;
+            height: 4px;
+            background: white;
+            border-radius: 50%;
+        }
+        .robot-eyelid {
+            position: absolute;
+            top: -110%;
+            left: -1px;
+            right: -1px;
+            height: 110%;
+            background: #e2e8f0;
+            transition: top 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+            z-index: 2;
+        }
+        .robot-eye.closed .robot-eyelid {
+            top: -2px;
+            height: calc(100% + 4px);
+        }
+        .robot-eye.peek .robot-eyelid {
+            top: 60%;
+            height: 40%;
+        }
+        .robot-mouth {
+            width: 16px;
+            height: 8px;
+            border: 2px solid #94a3b8;
+            border-top: none;
+            border-radius: 0 0 10px 10px;
+            transition: all 0.3s ease;
+        }
+        .robot-head.typing .robot-mouth {
+            width: 10px;
+            height: 10px;
+            border: 2px solid #94a3b8;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+        }
+
+        /* Password eye toggle */
+        .pwd-wrapper {
+            position: relative;
+        }
+        .eye-toggle-btn {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #94a3b8;
+            padding: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.2s;
+            z-index: 2;
+            min-height: 44px;
+            min-width: 44px;
+        }
+        .eye-toggle-btn:hover {
+            color: #3373ff;
+        }
+    </style>
+</head>
+<body class="bg-surface-100 min-h-screen">
+
+<!-- Toast Container -->
+<div id="toastContainer" class="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none"></div>
+
+<!-- App Root -->
+<div id="appRoot" class="flex items-center justify-center min-h-screen">
+    <div class="spinner"></div>
+</div>
+
+<script>
+(function() {
+    // ===== TOAST NOTIFICATION SYSTEM =====
+    function showToast(message, type = 'info', duration = 3000) {
+        const container = document.getElementById('toastContainer');
+        if (!container) return;
+        const colors = {
+            success: 'bg-emerald-500', error: 'bg-red-500',
+            warning: 'bg-amber-500', info: 'bg-brand-600'
+        };
+        const icons = {
+            success: '✓', error: '✕', warning: '⚠', info: 'ℹ'
+        };
+        const toast = document.createElement('div');
+        toast.className = `pointer-events-auto toast-enter ${colors[type] || colors.info} text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-2 text-sm font-medium max-w-sm`;
+        toast.innerHTML = `<span class="text-lg">${icons[type] || icons.info}</span><span>${escapeHtml(message)}</span>`;
+        container.appendChild(toast);
+        setTimeout(() => {
+            toast.classList.remove('toast-enter');
+            toast.classList.add('toast-exit');
+            setTimeout(() => toast.remove(), 300);
+        }, duration);
+    }
+
+    // ===== CUSTOM MODAL SYSTEM (replaces native alert/confirm/prompt) =====
+    function closeAllModals() {
+        document.querySelectorAll('.modal-overlay').forEach(m => m.remove());
+    }
+
+    function showModal({ title = '', message = '', type = 'info', inputs = [], confirmText = 'Confirm', cancelText = 'Cancel', danger = false }) {
+        return new Promise((resolve) => {
+            closeAllModals();
+            const overlay = document.createElement('div');
+            overlay.className = 'modal-overlay fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[10000] p-4';
+
+            const inputHTML = inputs.map((inp, i) => `
+                <div class="mb-3">
+                    ${inp.label ? `<label class="block text-xs font-medium text-surface-600 mb-1.5">${escapeHtml(inp.label)}</label>` : ''}
+                    <input type="${inp.type || 'text'}" id="modal-input-${i}"
+                        class="w-full px-4 py-3 rounded-xl border border-surface-200 text-sm focus:border-brand-400 focus:ring-2 focus:ring-brand-100 outline-none transition bg-white"
+                        placeholder="${escapeHtml(inp.placeholder || '')}"
+                        value="${escapeHtml(inp.value || '')}"
+                        ${inp.type === 'password' ? 'autocomplete="new-password"' : ''}>
+                </div>
+            `).join('');
+
+            const iconMap = { danger: '⚠️', warning: '⚠️', info: 'ℹ️', success: '✅' };
+            const icon = danger ? iconMap.danger : (iconMap[type] || '');
+
+            overlay.innerHTML = `
+                <div class="modal-card-custom bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+                    ${title ? `<div class="flex items-center gap-2.5 mb-2">${icon ? `<span class="text-xl">${icon}</span>` : ''}<h3 class="text-lg font-bold text-surface-800">${escapeHtml(title)}</h3></div>` : ''}
+                    ${message ? `<p class="text-sm text-surface-600 mb-4 leading-relaxed">${escapeHtml(message)}</p>` : ''}
+                    ${inputHTML}
+                    <div class="flex gap-3 justify-end mt-5">
+                        ${cancelText ? `<button class="modal-cancel-btn px-5 py-2.5 rounded-xl text-sm font-medium bg-surface-100 text-surface-600 hover:bg-surface-200 hover:text-surface-800 transition min-h-[44px]" id="modal-cancel">${escapeHtml(cancelText)}</button>` : ''}
+                        <button class="modal-confirm-btn px-5 py-2.5 rounded-xl text-sm font-medium transition shadow-sm min-h-[44px] ${danger ? 'bg-red-600 text-white hover:bg-red-700 shadow-red-100' : 'bg-brand-600 text-white hover:bg-brand-700 shadow-brand-100'}" id="modal-confirm">${escapeHtml(confirmText)}</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+
+            const firstInput = overlay.querySelector('input');
+            if (firstInput) setTimeout(() => firstInput.focus(), 150);
+            else setTimeout(() => overlay.querySelector('#modal-confirm')?.focus(), 100);
+
+            const cleanup = (result) => {
+                overlay.classList.add('closing');
+                setTimeout(() => { overlay.remove(); resolve(result); }, 150);
+            };
+
+            overlay.querySelector('#modal-cancel')?.addEventListener('click', () => cleanup(inputs.length ? null : false));
+            overlay.querySelector('#modal-confirm').addEventListener('click', () => {
+                if (inputs.length) {
+                    const values = inputs.map((_, i) => {
+                        const el = overlay.querySelector(`#modal-input-${i}`);
+                        return el ? el.value.trim() : '';
+                    });
+                    cleanup(values.length === 1 ? values[0] : values);
+                } else cleanup(true);
+            });
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(inputs.length ? null : false); });
+            overlay.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.target.matches('input[type="text"]')) { e.preventDefault(); overlay.querySelector('#modal-confirm').click(); }
+                if (e.key === 'Enter' && e.target.matches('input')) { e.preventDefault(); overlay.querySelector('#modal-confirm').click(); }
+                if (e.key === 'Escape') cleanup(inputs.length ? null : false);
+            });
+        });
+    }
+
+    async function customConfirm(message, title = 'Confirm', danger = false) {
+        return showModal({ title, message, danger, confirmText: 'Yes, continue', cancelText: 'Cancel' });
+    }
+
+    async function customPrompt(label, placeholder = '', title = 'Input', type = 'text') {
+        return showModal({ title, type: 'info', inputs: [{ label, placeholder, type }], confirmText: 'Submit', cancelText: 'Cancel' });
+    }
+
+    // ===== FIREBASE INIT =====
+    let db, auth, secondaryAuth, ref, set, get, update, push, child, onValue, onAuthStateChanged,
+        signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, sendPasswordResetEmail;
+
+    async function waitForFirebase() {
+        if (window.__firebaseReady) return;
+        return new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => { cleanup(); reject(new Error('Firebase initialization timed out')); }, 10000);
+            const cleanup = () => { clearTimeout(timeout); window.removeEventListener('firebase-ready', listener); clearInterval(interval); };
+            const listener = () => { cleanup(); resolve(); };
+            window.addEventListener('firebase-ready', listener, { once: true });
+            const interval = setInterval(() => { if (window.__firebaseReady) { cleanup(); resolve(); } }, 50);
+        });
+    }
+
+    async function initializeFirebase() {
+        try {
+            await waitForFirebase();
+            db = window.db; auth = window.auth; secondaryAuth = window.secondaryAuth; ref = window.firebaseRef; set = window.firebaseSet; get = window.firebaseGet;
+            update = window.firebaseUpdate; push = window.firebasePush; child = window.firebaseChild; onValue = window.firebaseOnValue;
+            onAuthStateChanged = window.onAuthStateChanged; signInWithEmailAndPassword = window.signInWithEmailAndPassword;
+            createUserWithEmailAndPassword = window.createUserWithEmailAndPassword; signOut = window.signOut;
+            sendPasswordResetEmail = window.sendPasswordResetEmail;
+        } catch (error) {
+            document.getElementById('appRoot').innerHTML = `
+                <div class="flex items-center justify-center min-h-screen">
+                    <div class="bg-white rounded-2xl p-8 shadow-xl text-center max-w-md">
+                        <div class="text-5xl mb-4">🔌</div>
+                        <h2 class="text-xl font-bold text-surface-800 mb-2">Connection Error</h2>
+                        <p class="text-surface-500 mb-4">Unable to connect to Firebase.</p>
+                        <button class="bg-brand-600 text-white px-6 py-2.5 rounded-xl font-medium hover:bg-brand-700 transition" onclick="location.reload()">Retry</button>
+                    </div>
+                </div>`;
+            throw error;
+        }
+    }
+
+    function delegateEvent(parentSelector, eventType, selector, handler) {
+        const parent = document.querySelector(parentSelector);
+        if (!parent) return;
+        parent.addEventListener(eventType, (e) => {
+            const target = e.target.closest(selector);
+            if (target) handler.call(target, e);
+        });
+    }
+
+    // ===== GLOBAL STATE =====
+    let invoiceColumns = [], accountsColumns = [], fibColumns = [];
+    const DEFAULT_INVOICE_COLUMNS = [
+        { key: "area", label: "Area" }, { key: "invoiceNo", label: "Invoice No" },
+        { key: "submissionDate", label: "Submission Date" }, { key: "daysOutstand", label: "Days Outstand" },
+        { key: "company", label: "Company" }, { key: "amount", label: "Amount (USD)" },
+        { key: "exchangeRate", label: "Exchange Rate" }, { key: "bankStatus", label: "Bank Status" },
+        { key: "topUpStatus", label: "Account Top-Up Status" }
+    ];
+    const DEFAULT_ACCOUNTS_COLUMNS = [
+        { key: "account", label: "Accounts" }, { key: "invoiceNo", label: "Invoice No" },
+        { key: "balance", label: "Balance we have" }, { key: "yesterdaySales", label: "yesterday sales" }
+    ];
+    const DEFAULT_FIB_COLUMNS = [
+        { key: "invoiceNo", label: "Reference (Invoice No)" }, { key: "amount", label: "Amount Request" },
+        { key: "remaining", label: "Remaining Amount to be sent" }, { key: "status", label: "Status" }
+    ];
+
+    let invoiceData = [], accountsData = [], fibData = [];
+    let viewerPermissions = {};
+    let activityLog = []; const MAX_LOG_ENTRIES = 200;
+    let snapshots = {};
+    let currentUser = null, userRole = null;
+    let lastActiveAdminTab = 'dashboard';
+    const ADMIN_EMAIL = "Rebaz.abdullah@Fast-pay.iq";
+
+    function getBaghdadDate() {
+        const d = new Date();
+        return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Baghdad', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+    }
+    function formatBaghdadDateTime(iso) { if (!iso) return '—'; try { return new Date(iso).toLocaleString('en-IQ', { timeZone: 'Asia/Baghdad' }); } catch(e) { return '—'; } }
+    function formatBaghdadDate(iso) { if (!iso) return '—'; try { return new Date(iso).toLocaleDateString('en-IQ', { timeZone: 'Asia/Baghdad' }); } catch(e) { return '—'; } }
+
+    const PATHS = {
+        USER_ROLES: 'userRoles', COLUMNS: 'columns', DATA: 'data',
+        PERMISSIONS: 'permissions', ACTIVITY_LOG: 'activityLog',
+        SNAPSHOTS: 'snapshots', ACCESS_REQUESTS: 'accessRequests'
+    };
+
+    async function fbGet(path) { try { const snap = await get(ref(db, path)); return snap.exists() ? snap.val() : null; } catch(e) { console.error('fbGet error:', e); return null; } }
+    async function fbSet(path, data) { try { await set(ref(db, path), data); } catch(e) { console.error('fbSet error:', e); } }
+    async function fbUpdate(path, data) { try { await update(ref(db, path), data); } catch(e) { console.error('fbUpdate error:', e); } }
+    async function fbPush(path, data) { try { const nr = push(ref(db, path)); await set(nr, data); return nr.key; } catch(e) { console.error('fbPush error:', e); return null; } }
+
+    function sanitizeArray(data) {
+        if (!data) return [];
+        if (Array.isArray(data)) return data.filter(v => v != null);
+        try {
+            return Object.keys(data).sort((a, b) => Number(a) - Number(b)).map(k => data[k]).filter(v => v != null && typeof v === 'object');
+        } catch (e) { return []; }
+    }
+
+    function sanitizeRow(row, cols) {
+        if (!row || typeof row !== 'object') {
+            const nr = { _cellColors: {} };
+            cols.forEach(c => nr[c.key] = '');
+            return nr;
+        }
+        if (!row._cellColors) row._cellColors = {};
+        cols.forEach(c => { if (row[c.key] == null) row[c.key] = ''; });
+        return row;
+    }
+
+    async function loadColumnsAndData() {
+        try {
+            const cols = await fbGet(PATHS.COLUMNS) || {};
+            invoiceColumns = sanitizeArray(cols.invoice).length ? sanitizeArray(cols.invoice) : [...DEFAULT_INVOICE_COLUMNS];
+            accountsColumns = sanitizeArray(cols.accounts).length ? sanitizeArray(cols.accounts) : [...DEFAULT_ACCOUNTS_COLUMNS];
+            fibColumns = sanitizeArray(cols.fib).length ? sanitizeArray(cols.fib) : [...DEFAULT_FIB_COLUMNS];
+            const data = await fbGet(PATHS.DATA) || {};
+            invoiceData = sanitizeArray(data.invoice); accountsData = sanitizeArray(data.accounts); fibData = sanitizeArray(data.fib);
+
+            if (!invoiceData.length) invoiceData = [
+                { area:"Erbil To Baghdad", invoiceNo:"12888407", submissionDate:"29-Mar-26", daysOutstand:"8", company:"Mintroute", amount:"IQD 1,450,000,000", exchangeRate:"", bankStatus:"N/A", topUpStatus:"Not Received" },
+                { area:"Baghdad To Mintroute", invoiceNo:"2166", submissionDate:"23-Mar-26", daysOutstand:"14", company:"Mintroute", amount:"$ 1,052,705.00", exchangeRate:"IQD 1,320", bankStatus:"Final Approval", topUpStatus:"Not Received" }
+            ].map(r => { let nr = { _cellColors: {} }; invoiceColumns.forEach(c => nr[c.key] = r[c.key] || ""); return nr; });
+
+            if (!accountsData.length) accountsData = [
+                { account:"LikeCard", invoiceNo:"INV-1001", balance:"$ 32,040.43", yesterdaySales:"$ 483.26" },
+                { account:"Mintroute", invoiceNo:"INV-1002", balance:"$ 832,474.70", yesterdaySales:"$ 65,772.75" },
+                { account:"OneCard", invoiceNo:"INV-1003", balance:"$ 100,000.00", yesterdaySales:"$ -" },
+                { account:"FIB:Mintroute", invoiceNo:"INV-1004", balance:"$ 814,388.37", yesterdaySales:"$ 55,033.17" }
+            ].map(r => { let nr = { _cellColors: {} }; accountsColumns.forEach(c => nr[c.key] = r[c.key] || ""); return nr; });
+
+            if (!fibData.length) fibData = [
+                { invoiceNo:"T14", amount:"$1,000,000.00", remaining:"$500,000.00", status:"Remaining" },
+                { invoiceNo:"T15", amount:"$1,000,000.00", remaining:"$1,000,000.00", status:"Pending To Pay" }
+            ].map(r => { let nr = { _cellColors: {} }; fibColumns.forEach(c => nr[c.key] = r[c.key] || ""); return nr; });
+
+            // Sanitize all rows to ensure no null/undefined values slip through
+            invoiceData = invoiceData.map(r => sanitizeRow(r, invoiceColumns));
+            accountsData = accountsData.map(r => sanitizeRow(r, accountsColumns));
+            fibData = fibData.map(r => sanitizeRow(r, fibColumns));
+
+            await saveAllToStorage();
+        } catch(e) { console.error(e); }
+    }
+
+    async function saveColumnsToStorage() { await fbUpdate(PATHS.COLUMNS, { invoice: invoiceColumns, accounts: accountsColumns, fib: fibColumns }); }
+    async function saveDataToStorage() { await fbUpdate(PATHS.DATA, { invoice: invoiceData, accounts: accountsData, fib: fibData }); }
+    async function saveAllToStorage() { await saveColumnsToStorage(); await saveDataToStorage(); }
+    async function getUserRole(uid) { const snap = await fbGet(`${PATHS.USER_ROLES}/${uid}`); return snap ? snap.role : null; }
+    async function setUserRole(uid, role) { await fbSet(`${PATHS.USER_ROLES}/${uid}`, { role, email: currentUser?.email || '' }); }
+
+    function getDefaultTablePerms() {
+        return { view: true, edit: false, addRow: false, deleteRow: false, addColumn: false, deleteColumn: false, dragRows: false, dragColumns: false, print: false, share: false };
+    }
+    function getDefaultViewerPermissions() {
+        return { invoice: getDefaultTablePerms(), accounts: getDefaultTablePerms(), fib: getDefaultTablePerms(), dailyReport: getDefaultTablePerms(), dashboard: getDefaultTablePerms() };
+    }
+
+    async function loadPermissions() {
+        const perms = await fbGet(PATHS.PERMISSIONS) || {};
+        viewerPermissions = perms;
+        Object.keys(viewerPermissions).forEach(uid => {
+            if (!viewerPermissions[uid]) viewerPermissions[uid] = getDefaultViewerPermissions();
+            ['invoice','accounts','fib','dailyReport','dashboard'].forEach(t => {
+                if (!viewerPermissions[uid][t]) viewerPermissions[uid][t] = getDefaultTablePerms();
+                if (viewerPermissions[uid][t]) {
+                    if (viewerPermissions[uid][t].dragRows === undefined) viewerPermissions[uid][t].dragRows = false;
+                    if (viewerPermissions[uid][t].dragColumns === undefined) viewerPermissions[uid][t].dragColumns = false;
+                    if (viewerPermissions[uid][t].print === undefined) viewerPermissions[uid][t].print = false;
+                    if (viewerPermissions[uid][t].share === undefined) viewerPermissions[uid][t].share = false;
+                }
+            });
+        });
+        await savePermissions();
+    }
+    async function savePermissions() { await fbSet(PATHS.PERMISSIONS, viewerPermissions); }
+
+    function ensureViewerPermissions(uid) {
+        if (!viewerPermissions[uid]) {
+            viewerPermissions[uid] = getDefaultViewerPermissions();
+            savePermissions();
+        } else {
+            const p = viewerPermissions[uid];
+            if (!p.invoice) p.invoice = getDefaultTablePerms();
+            if (!p.accounts) p.accounts = getDefaultTablePerms();
+            if (!p.fib) p.fib = getDefaultTablePerms();
+            if (!p.dailyReport) p.dailyReport = getDefaultTablePerms();
+            ['invoice','accounts','fib','dailyReport'].forEach(t => {
+                if (p[t]) {
+                    if (p[t].dragRows === undefined) p[t].dragRows = false;
+                    if (p[t].dragColumns === undefined) p[t].dragColumns = false;
+                    if (p[t].print === undefined) p[t].print = false;
+                    if (p[t].share === undefined) p[t].share = false;
+                }
+            });
+            savePermissions();
+        }
+    }
+
+    async function updateTablePermission(uid, table, action, value) {
+        if (!viewerPermissions[uid]) viewerPermissions[uid] = getDefaultViewerPermissions();
+        if (!viewerPermissions[uid][table]) viewerPermissions[uid][table] = getDefaultTablePerms();
+        viewerPermissions[uid][table][action] = value;
+        await savePermissions();
+        await logActivity(currentUser?.email || 'system', "Changed permission", `${uid} - ${table}.${action}=${value}`);
+        const activeTabEl = document.querySelector('.admin-tab.active');
+        if (activeTabEl) lastActiveAdminTab = activeTabEl.dataset.tab;
+        renderFullApp();
+    }
+
+    async function loadActivityLog() { const log = await fbGet(PATHS.ACTIVITY_LOG); activityLog = log ? (Array.isArray(log) ? log : Object.values(log)).filter(e => e && typeof e === 'object') : []; }
+    async function saveActivityLog() { if (activityLog.length > MAX_LOG_ENTRIES) activityLog = activityLog.slice(-MAX_LOG_ENTRIES); await fbSet(PATHS.ACTIVITY_LOG, activityLog); }
+    async function logActivity(userEmail, action, details = "") {
+        activityLog.push({ timestamp: new Date().toISOString(), userEmail, action, details });
+        await saveActivityLog();
+        if (document.getElementById("activityLogContainer")) renderActivityLog();
+    }
+
+    function renderActivityLog() {
+        const c = document.getElementById("activityLogContainer");
+        if (!c) return;
+
+        // Get filter values
+        const userFilter = (document.getElementById("logUserFilter")?.value || '').trim().toLowerCase();
+        const dateFilter = document.getElementById("logDateFilter")?.value || '';
+        const actionFilter = document.getElementById("logActionFilter")?.value || '';
+
+        // Filter the log
+        let filtered = [...activityLog].reverse();
+
+        if (userFilter) {
+            filtered = filtered.filter(e => (e.userEmail || '').toLowerCase().includes(userFilter));
+        }
+        if (dateFilter) {
+            filtered = filtered.filter(e => {
+                try { return formatBaghdadDate(e.timestamp) === formatBaghdadDate(new Date(dateFilter + 'T00:00:00').toISOString()); }
+                catch(_) { return false; }
+            });
+        }
+        if (actionFilter) {
+            filtered = filtered.filter(e => (e.action || '').toLowerCase().includes(actionFilter.toLowerCase()));
+        }
+
+        // Update result count
+        const countEl = document.getElementById("logResultCount");
+        if (countEl) {
+            const total = activityLog.length;
+            const shown = filtered.length;
+            countEl.textContent = (userFilter || dateFilter || actionFilter)
+                ? `Showing ${shown} of ${total} entries`
+                : `${total} entries`;
+        }
+
+        if (!filtered.length) {
+            c.innerHTML = `<div class="text-center text-surface-400 py-8 text-sm">${activityLog.length ? 'No matching entries for current filters.' : 'No activity recorded yet.'}</div>`;
+            return;
+        }
+
+        c.innerHTML = filtered.map(e => `
+            <div class="flex gap-3 py-2.5 px-3 border-b border-surface-100 text-xs hover:bg-surface-50 transition">
+                <span class="text-surface-400 w-[140px] shrink-0 font-mono">${formatBaghdadDateTime(e.timestamp)}</span>
+                <span class="text-brand-700 font-semibold w-[180px] shrink-0 truncate" title="${escapeHtml(e.userEmail)}">${escapeHtml(e.userEmail)}</span>
+                <span class="text-surface-700"><strong class="text-surface-900">${escapeHtml(e.action)}</strong> ${escapeHtml(e.details)}</span>
+            </div>`).join('');
+    }
+
+    async function clearActivityLog() {
+        if (await customConfirm("Clear all activity logs? This action cannot be undone.", "Clear Activity Log", true)) {
+            activityLog = [];
+            await saveActivityLog();
+            renderActivityLog();
+            await logActivity(currentUser?.email, "Cleared activity log");
+            showToast('Activity log cleared', 'success');
+        }
+    }
+
+    function renderDashboard(containerId = "dashboardContent") {
+        const c = document.getElementById(containerId);
+        if (!c) return;
+
+        // Find specific account rows from Accounts Summary
+        const findAccount = (search, exclude) => accountsData.find(r => {
+            const acc = (r.account || '').toLowerCase();
+            return acc.includes(search.toLowerCase()) && (!exclude || !acc.includes(exclude.toLowerCase()));
+        });
+
+        const mintrouteAcc = findAccount('Mintroute', 'FIB');
+        const likecardAcc = findAccount('LikeCard');
+        const onecardAcc = findAccount('OneCard');
+        const fibAcc = findAccount('FIB');
+
+        const mintrouteBal = mintrouteAcc ? extractNumericAmount(mintrouteAcc.balance) : 0;
+        const mintrouteSales = mintrouteAcc ? extractNumericAmount(mintrouteAcc.yesterdaySales) : 0;
+        const likecardBal = likecardAcc ? extractNumericAmount(likecardAcc.balance) : 0;
+        const likecardSales = likecardAcc ? extractNumericAmount(likecardAcc.yesterdaySales) : 0;
+        const onecardBal = onecardAcc ? extractNumericAmount(onecardAcc.balance) : 0;
+        const onecardSales = onecardAcc ? extractNumericAmount(onecardAcc.yesterdaySales) : 0;
+        const fibBal = fibAcc ? extractNumericAmount(fibAcc.balance) : 0;
+        const fibSales = fibAcc ? extractNumericAmount(fibAcc.yesterdaySales) : 0;
+
+        c.innerHTML = `
+            <!-- Overview cards -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-6">
+                <div class="bg-gradient-to-br from-brand-500 to-brand-700 rounded-2xl p-4 sm:p-5 text-white shadow-lg shadow-brand-200/50">
+                    <div class="text-sm sm:text-base font-semibold text-brand-100 mb-1">FastPay Mintroute</div>
+                    <div class="text-2xl sm:text-3xl font-bold">${mintrouteBal.toLocaleString()}</div>
+                    <div class="text-xs sm:text-sm text-brand-200 mt-1">Yesterday: ${mintrouteSales.toLocaleString()}</div>
+                </div>
+                <div class="bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-2xl p-4 sm:p-5 text-white shadow-lg shadow-emerald-200/50">
+                    <div class="text-sm sm:text-base font-semibold text-emerald-100 mb-1">FastPay LikeCard</div>
+                    <div class="text-2xl sm:text-3xl font-bold">${likecardBal.toLocaleString()}</div>
+                    <div class="text-xs sm:text-sm text-emerald-200 mt-1">Yesterday: ${likecardSales.toLocaleString()}</div>
+                </div>
+                <div class="bg-gradient-to-br from-amber-500 to-amber-700 rounded-2xl p-4 sm:p-5 text-white shadow-lg shadow-amber-200/50">
+                    <div class="text-sm sm:text-base font-semibold text-amber-100 mb-1">FastPay OneCard</div>
+                    <div class="text-2xl sm:text-3xl font-bold">${onecardBal.toLocaleString()}</div>
+                    <div class="text-xs sm:text-sm text-amber-200 mt-1">Yesterday: ${onecardSales.toLocaleString()}</div>
+                </div>
+                <div class="bg-gradient-to-br from-purple-500 to-purple-700 rounded-2xl p-4 sm:p-5 text-white shadow-lg shadow-purple-200/50">
+                    <div class="text-sm sm:text-base font-semibold text-purple-100 mb-1">FIB Mintroute</div>
+                    <div class="text-2xl sm:text-3xl font-bold">${fibBal.toLocaleString()}</div>
+                    <div class="text-xs sm:text-sm text-purple-200 mt-1">Yesterday: ${fibSales.toLocaleString()}</div>
+                </div>
+            </div>
+
+            <!-- Quick stats footer -->
+            <div class="p-4 bg-surface-50 rounded-xl border border-surface-100">
+                <div class="flex flex-wrap gap-4 text-xs text-surface-500">
+                    <span>📅 Date: ${getBaghdadDate()}</span>
+                    <span>📸 Snapshots: ${Object.keys(snapshots).length}</span>
+                    <span>👥 Viewers: ${Object.keys(viewerPermissions).length}</span>
+                    <span>📋 Log entries: ${activityLog.length}</span>
+                </div>
+            </div>`;
+    }
+
+    async function loadSnapshots() { const s = await fbGet(PATHS.SNAPSHOTS); snapshots = (s && typeof s === 'object') ? s : {}; }
+    async function saveSnapshots() { await fbSet(PATHS.SNAPSHOTS, snapshots); }
+
+    async function saveCurrentSnapshot(date = null) {
+        const today = date || getBaghdadDate();
+        snapshots[today] = {
+            date: today, timestamp: new Date().toISOString(),
+            invoiceColumns: JSON.parse(JSON.stringify(invoiceColumns)),
+            accountsColumns: JSON.parse(JSON.stringify(accountsColumns)),
+            fibColumns: JSON.parse(JSON.stringify(fibColumns)),
+            invoiceData: JSON.parse(JSON.stringify(invoiceData)),
+            accountsData: JSON.parse(JSON.stringify(accountsData)),
+            fibData: JSON.parse(JSON.stringify(fibData))
+        };
+        await saveSnapshots();
+        await logActivity(currentUser?.email, "Saved daily snapshot", today);
+        showToast(`Snapshot saved for ${today}`, 'success');
+        if (document.getElementById("reportDateSelect")) populateReportDateSelect();
+    }
+
+    function populateReportDateSelect() {
+        const sel = document.getElementById("reportDateSelect");
+        if (!sel) return;
+        const dates = Object.keys(snapshots).sort().reverse();
+        sel.innerHTML = '<option value="">-- Select a date --</option>';
+        dates.forEach(d => { const opt = document.createElement("option"); opt.value = d; opt.textContent = d; sel.appendChild(opt); });
+    }
+
+    function extractNumericAmount(str) {
+        if (!str) return 0;
+        const m = str.toString().match(/[\d,]+\.?\d*/);
+        return m ? parseFloat(m[0].replace(/,/g, '')) : 0;
+    }
+
+    function generateReportForDate(date) {
+        const s = snapshots[date];
+        if (!s) { showToast("No snapshot for this date.", "warning"); return; }
+        const div = document.getElementById("reportContent");
+        if (!div) return;
+
+        let usd = 0, iqd = 0;
+        s.invoiceData.forEach(r => { const amt = r.amount || ""; if (amt.includes("$")) usd += extractNumericAmount(amt); else if (amt.includes("IQD")) iqd += extractNumericAmount(amt); });
+        let bal = 0; s.accountsData.forEach(r => bal += extractNumericAmount(r.balance));
+        let amt = 0, rem = 0; s.fibData.forEach(r => { amt += extractNumericAmount(r.amount); rem += extractNumericAmount(r.remaining); });
+
+        const renderTbl = (data, cols) => {
+            const getCellStyle = (row, colKey) => {
+                const color = row._cellColors?.[colKey];
+                if (!color) return '';
+                const brightness = getColorBrightness(color);
+                const textColor = brightness < 128 ? 'color:#fff;' : '';
+                return `background-color:${color};${textColor}-webkit-print-color-adjust:exact;print-color-adjust:exact;`;
+            };
+            return `
+            <div class="overflow-x-auto mt-3">
+                <table class="w-full text-xs border-collapse" style="-webkit-print-color-adjust:exact;print-color-adjust:exact;">
+                    <thead><tr class="bg-surface-50">${cols.map(c => `<th class="px-3 py-2 text-left font-semibold text-surface-600 border border-surface-200">${escapeHtml(c.label)}</th>`).join('')}</tr></thead>
+                    <tbody>${data.map(r => `<tr class="hover:bg-surface-50">${cols.map(c => `<td class="px-3 py-2 border border-surface-200 text-surface-700" style="${getCellStyle(r, c.key)}">${escapeHtml(r[c.key] || '')}</td>`).join('')}</tr>`).join('')}</tbody>
+                </table>
+            </div>`;
+        };
+
+        div.innerHTML = `
+            <div class="bg-white rounded-2xl p-6 mt-4 border border-surface-200 fade-in-up">
+                <h4 class="text-lg font-bold text-surface-800 mb-4">📊 Summary for ${date}</h4>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                    <div class="bg-brand-50 rounded-xl p-4">
+                        <div class="text-xs font-medium text-brand-600 mb-1">Invoice Grid</div>
+                        <div class="text-2xl font-bold text-brand-900">${s.invoiceData.length}</div>
+                        <div class="text-xs text-brand-700 mt-1">USD: $${usd.toLocaleString()} | IQD: ${iqd.toLocaleString()}</div>
+                    </div>
+                    <div class="bg-emerald-50 rounded-xl p-4">
+                        <div class="text-xs font-medium text-emerald-600 mb-1">Accounts</div>
+                        <div class="text-2xl font-bold text-emerald-900">${s.accountsData.length}</div>
+                        <div class="text-xs text-emerald-700 mt-1">Balance: $${bal.toLocaleString()}</div>
+                    </div>
+                    <div class="bg-purple-50 rounded-xl p-4">
+                        <div class="text-xs font-medium text-purple-600 mb-1">FIB</div>
+                        <div class="text-2xl font-bold text-purple-900">${s.fibData.length}</div>
+                        <div class="text-xs text-purple-700 mt-1">Amount: $${amt.toLocaleString()} | Rem: $${rem.toLocaleString()}</div>
+                    </div>
+                </div>
+                <h5 class="font-semibold text-surface-700 mt-6 mb-2">Invoice Data</h5>${renderTbl(s.invoiceData, s.invoiceColumns)}
+                <h5 class="font-semibold text-surface-700 mt-6 mb-2">Accounts Data</h5>${renderTbl(s.accountsData, s.accountsColumns)}
+                <h5 class="font-semibold text-surface-700 mt-6 mb-2">FIB Data</h5>${renderTbl(s.fibData, s.fibColumns)}
+            </div>`;
+        logActivity(currentUser?.email, "Generated report", date);
+    }
+
+    async function downloadReportAsPDF() {
+        const sel = document.getElementById("reportDateSelect");
+        const date = sel?.value;
+        const reportDiv = document.getElementById("reportContent");
+        if (!reportDiv || !reportDiv.innerHTML.trim()) {
+            showToast("Generate a report first before downloading PDF.", "warning");
+            return;
+        }
+        const snap = (date && snapshots[date]) ? snapshots[date] : { invoiceColumns, accountsColumns, fibColumns, invoiceData, accountsData, fibData, date: getBaghdadDate() };
+        const filename = `Finance_Report_${snap.date || getBaghdadDate()}.pdf`;
+
+        // Clone the report content for PDF generation
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = `
+            <div style="font-family:Arial,Helvetica,sans-serif;padding:20px;max-width:1100px;margin:0 auto;color:#1e293b;-webkit-print-color-adjust:exact;print-color-adjust:exact">
+                <div style="text-align:center;margin-bottom:20px;border-bottom:3px solid #3373ff;padding-bottom:12px">
+                    <h1 style="font-size:22px;font-weight:800;color:#1e293b;margin:0">📊 Finance Vault — Daily Report</h1>
+                    <p style="font-size:11px;color:#64748b;margin:4px 0 0">Date: ${snap.date || getBaghdadDate()} · Baghdad Time</p>
+                </div>
+                ${reportDiv.innerHTML}
+            </div>`;
+        document.body.appendChild(wrapper);
+
+        try {
+            const pdf = await html2pdf().from(wrapper).set({
+                margin: [8, 8, 8, 8],
+                filename,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true, logging: false },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+            }).toPdf().get('pdf');
+
+            const pdfBlob = pdf.output('blob');
+            document.body.removeChild(wrapper);
+
+            const url = URL.createObjectURL(pdfBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            await logActivity(currentUser?.email, "Downloaded report PDF", snap.date || getBaghdadDate());
+            showToast("PDF report downloaded!", "success");
+        } catch (e) {
+            console.error('PDF report error:', e);
+            try { document.body.removeChild(wrapper); } catch(_) {}
+            showToast("Failed to generate PDF report.", "error");
+        }
+    }
+
+    function downloadReportAsCSV() {
+        const sel = document.getElementById("reportDateSelect");
+        const date = sel?.value;
+        let snap = (date && snapshots[date]) ? snapshots[date] : { invoiceColumns, accountsColumns, fibColumns, invoiceData, accountsData, fibData, date: getBaghdadDate() };
+        function toCSV(data, cols) {
+            if (!data.length) return "";
+            const h = cols.map(c => `"${c.label.replace(/"/g, '""')}"`).join(',');
+            const rows = data.map(r => cols.map(c => `"${String(r[c.key]||'').replace(/"/g, '""')}"`).join(','));
+            return [h, ...rows].join('\n');
+        }
+        const csv = `"Report Date: ${snap.date}"\n\nINVOICE\n${toCSV(snap.invoiceData, snap.invoiceColumns)}\n\nACCOUNTS\n${toCSV(snap.accountsData, snap.accountsColumns)}\n\nFIB\n${toCSV(snap.fibData, snap.fibColumns)}`;
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `finance_report_${snap.date}.csv`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        logActivity(currentUser?.email, "Downloaded CSV", snap.date);
+        showToast("Report downloaded", "success");
+    }
+
+    async function addColumnToTable(tableName, label) {
+        if (!label?.trim()) return false;
+        const key = "col_" + Date.now() + "_" + Math.random().toString(36).substr(2,5);
+        const col = { key, label: label.trim() };
+        if (tableName === 'invoice') { invoiceColumns.push(col); invoiceData.forEach(r => r[key] = ""); }
+        else if (tableName === 'accounts') { accountsColumns.push(col); accountsData.forEach(r => r[key] = ""); }
+        else { fibColumns.push(col); fibData.forEach(r => r[key] = ""); }
+        await saveAllToStorage();
+        await logActivity(currentUser?.email, `Added column to ${tableName}`, label);
+        return true;
+    }
+
+    async function removeColumnFromTable(tableName, key) {
+        let cols, data;
+        if (tableName === 'invoice') { cols = invoiceColumns; data = invoiceData; }
+        else if (tableName === 'accounts') { cols = accountsColumns; data = accountsData; }
+        else { cols = fibColumns; data = fibData; }
+        const idx = cols.findIndex(c => c.key === key);
+        if (idx === -1) return false;
+        cols.splice(idx, 1);
+        data.forEach(r => { delete r[key]; if (r._cellColors) delete r._cellColors[key]; });
+        await saveAllToStorage();
+        await logActivity(currentUser?.email, `Removed column from ${tableName}`, key);
+        return true;
+    }
+
+    // ===== DRAGGABLE TABLE =====
+    function initDraggableTable(tableId, dataArr, colsArr, tableName, canDragRows, canDragColumns) {
+        const tbl = document.getElementById(tableId);
+        if (!tbl) return;
+        const tbody = tbl.querySelector('tbody'), thead = tbl.querySelector('thead tr');
+        if (!tbody || !thead) return;
+        if (tbody._sortable) tbody._sortable.destroy();
+        if (thead._sortable) thead._sortable.destroy();
+
+        if (canDragRows) {
+            tbody._sortable = new Sortable(tbody, {
+                animation: 150, handle: '.drag-handle', draggable: 'tr',
+                ghostClass: 'sortable-ghost', chosenClass: 'sortable-chosen',
+                delay: 100, delayOnTouchOnly: true,
+                onEnd: async (evt) => {
+                    if (evt.oldIndex === evt.newIndex) return;
+                    const moved = dataArr.splice(evt.oldIndex, 1)[0];
+                    dataArr.splice(evt.newIndex, 0, moved);
+                    await saveDataToStorage();
+                    await logActivity(currentUser?.email, `Reordered rows in ${tableName}`, `${evt.oldIndex} → ${evt.newIndex}`);
+                }
+            });
+        }
+        if (canDragColumns) {
+            thead._sortable = new Sortable(thead, {
+                animation: 150, draggable: 'th.draggable-column',
+                filter: '.col-rename-input',
+                delay: 100, delayOnTouchOnly: true,
+                onEnd: async (evt) => {
+                    const oldIndex = evt.oldDraggableIndex, newIndex = evt.newDraggableIndex;
+                    if (oldIndex === newIndex) return;
+                    const moved = colsArr.splice(oldIndex, 1)[0];
+                    colsArr.splice(newIndex, 0, moved);
+                    const keys = colsArr.map(c => c.key);
+                    dataArr.forEach(r => {
+                        const nr = {}; keys.forEach(k => nr[k] = r[k] || '');
+                        if (r._cellColors) nr._cellColors = r._cellColors;
+                        Object.keys(r).forEach(k => delete r[k]); Object.assign(r, nr);
+                    });
+                    await saveAllToStorage();
+                    await logActivity(currentUser?.email, `Reordered columns in ${tableName}`, `${oldIndex} → ${newIndex}`);
+                    renderFullApp();
+                }
+            });
+        }
+    }
+
+    // ===== CELL COLOR PICKER =====
+    function getColorBrightness(hex) {
+        if (!hex || !hex.startsWith('#') || hex.length < 7) return 255;
+        const c = hex.replace('#', '');
+        const r = parseInt(c.substr(0, 2), 16);
+        const g = parseInt(c.substr(2, 2), 16);
+        const b = parseInt(c.substr(4, 2), 16);
+        return (r * 299 + g * 587 + b * 114) / 1000;
+    }
+
+    function showCellColorPicker(clientX, clientY, inputEl, row, colKey, tableName) {
+        document.querySelectorAll('.cell-color-picker').forEach(p => p.remove());
+
+        const presetColors = [
+            '#fecaca','#fed7aa','#fef08a','#bbf7d0','#bfdbfe','#c4b5fd','#fbcfe8','#e2e8f0',
+            '#f87171','#fb923c','#facc15','#4ade80','#60a5fa','#a78bfa','#f472b6','#94a3b8',
+            '#dc2626','#ea580c','#ca8a04','#16a34a','#2563eb','#7c3aed','#db2777','#475569'
+        ];
+
+        const currentColor = row._cellColors?.[colKey] || '';
+
+        const picker = document.createElement('div');
+        picker.className = 'cell-color-picker';
+
+        picker.innerHTML = `
+            <div class="cell-color-picker-title">🎨 Cell Color</div>
+            <div class="color-swatch-grid">
+                ${presetColors.map(c => `<div class="color-swatch${c === currentColor ? ' active' : ''}" style="background:${c}" data-color="${c}"></div>`).join('')}
+            </div>
+            <div class="cell-color-picker-actions">
+                <input type="color" class="cell-color-custom-input" value="${currentColor || '#3373ff'}" title="Custom color">
+                <span style="font-size:11px;color:#94a3b8;flex:1">Custom</span>
+                <span class="cell-color-clear-btn" title="Remove color">✕ Clear</span>
+            </div>
+        `;
+
+        document.body.appendChild(picker);
+
+        // Position
+        const rect = picker.getBoundingClientRect();
+        let left = clientX + 10, top = clientY + 10;
+        if (left + rect.width > window.innerWidth - 8) left = clientX - rect.width - 10;
+        if (top + rect.height > window.innerHeight - 8) top = clientY - rect.height - 10;
+        picker.style.left = Math.max(8, left) + 'px';
+        picker.style.top = Math.max(8, top) + 'px';
+
+        const applyColor = async (color) => {
+            if (!row._cellColors) row._cellColors = {};
+            row._cellColors[colKey] = color;
+            inputEl.style.backgroundColor = color;
+            inputEl.classList.add('has-cell-color');
+            const brightness = getColorBrightness(color);
+            inputEl.style.color = brightness < 128 ? '#ffffff' : '';
+            await saveDataToStorage();
+            picker.remove();
+        };
+
+        const clearColor = async () => {
+            if (row._cellColors) delete row._cellColors[colKey];
+            inputEl.style.backgroundColor = '';
+            inputEl.style.color = '';
+            inputEl.classList.remove('has-cell-color');
+            await saveDataToStorage();
+            picker.remove();
+        };
+
+        picker.querySelectorAll('.color-swatch').forEach(s => {
+            s.addEventListener('click', () => applyColor(s.dataset.color));
+        });
+        picker.querySelector('.cell-color-custom-input').addEventListener('input', (e) => {
+            applyColor(e.target.value);
+        });
+        picker.querySelector('.cell-color-clear-btn').addEventListener('click', clearColor);
+
+        // Close on outside click
+        setTimeout(() => {
+            const handler = (e) => {
+                if (!picker.contains(e.target)) {
+                    picker.remove();
+                    document.removeEventListener('mousedown', handler);
+                    document.removeEventListener('touchstart', handler, { passive: true });
+                }
+            };
+            document.addEventListener('mousedown', handler);
+            document.addEventListener('touchstart', handler, { passive: true });
+        }, 50);
+    }
+
+    // ===== RENDER DYNAMIC TABLE =====
+    function renderDynamicTable(tbodyId, data, cols, isAdmin, tableName, perms) {
+        const tbody = document.getElementById(tbodyId);
+        if (!tbody) return;
+        tbody.innerHTML = "";
+        const canEdit = perms.edit, canDel = perms.deleteRow, canDrag = perms.dragRows || false;
+
+        data.forEach((row, idx) => {
+            const tr = document.createElement("tr");
+            tr.className = "data-row border-b border-surface-100 hover:bg-surface-50/50 transition";
+
+            // Drag handle cell
+            const tdHandle = document.createElement("td");
+            tdHandle.className = "w-[36px] text-center shrink-0";
+            if (canDrag) {
+                tdHandle.innerHTML = `<span class="drag-handle text-surface-400 text-lg inline-block px-1" title="Drag to reorder">☰</span>`;
+            }
+            tr.appendChild(tdHandle);
+
+            // Data cells
+            cols.forEach(col => {
+                const td = document.createElement("td");
+                td.className = "px-1 py-1.5";
+                const inp = document.createElement("input");
+                inp.type = "text";
+                inp.className = "cell-input w-full border border-surface-200 rounded-lg px-3 py-3 text-sm bg-white disabled:bg-surface-50 disabled:text-surface-600 disabled:cursor-default";
+                inp.value = row[col.key] ?? "";
+                inp.disabled = !(isAdmin || canEdit);
+                // Apply cell color if exists
+                const cellColor = row._cellColors?.[col.key];
+                if (cellColor) {
+                    inp.style.backgroundColor = cellColor;
+                    inp.classList.add('has-cell-color');
+                    const brightness = getColorBrightness(cellColor);
+                    if (brightness < 128) inp.style.color = '#ffffff';
+                }
+                const adjustFontSize = (el) => {
+                    const len = el.value.length;
+                    if (len > 40) el.style.fontSize = '10px';
+                    else if (len > 25) el.style.fontSize = '11px';
+                    else if (len > 15) el.style.fontSize = '12px';
+                    else if (len > 8) el.style.fontSize = '13px';
+                    else el.style.fontSize = '';
+                };
+                adjustFontSize(inp);
+                if (!inp.disabled) {
+                    inp.addEventListener("input", async (e) => {
+                        row[col.key] = e.target.value;
+                        adjustFontSize(e.target);
+                        await saveDataToStorage();
+                    });
+                    // Right-click / long-press to open color picker
+                    inp.addEventListener("contextmenu", (e) => {
+                        e.preventDefault();
+                        showCellColorPicker(e.clientX, e.clientY, inp, row, col.key, tableName);
+                    });
+                }
+                td.appendChild(inp);
+                tr.appendChild(td);
+            });
+
+            // Action cell
+            const tdAct = document.createElement("td");
+            tdAct.className = "action-cell text-center w-[60px] px-1";
+            const delBtn = document.createElement("button");
+            delBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>`;
+            delBtn.className = "delete-btn p-1.5 rounded-lg text-surface-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-30 disabled:cursor-not-allowed transition";
+            delBtn.disabled = !(isAdmin || canDel);
+            delBtn.title = "Delete row";
+            if (!delBtn.disabled) {
+                delBtn.addEventListener("click", async () => {
+                    if (data.length === 1) { showToast("Cannot delete the last row.", "warning"); return; }
+                    if (await customConfirm(`Delete row #${idx+1}?`, 'Delete Row', true)) {
+                        data.splice(idx, 1);
+                        await saveDataToStorage();
+                        renderFullApp();
+                        await logActivity(currentUser?.email, `Deleted row in ${tableName}`, `Row ${idx}`);
+                        showToast(`Row deleted from ${tableName}`, "info");
+                    }
+                });
+            }
+            tdAct.appendChild(delBtn);
+            tr.appendChild(tdAct);
+            tbody.appendChild(tr);
+        });
+    }
+
+    // ===== VIEWER MANAGEMENT =====
+    async function listViewers() { const v = await fbGet('viewers'); return v ? Object.keys(v) : []; }
+
+    async function addViewer(email, pwd) {
+        try {
+            // Use secondary auth to avoid signing out the admin
+            const cred = await createUserWithEmailAndPassword(secondaryAuth, email, pwd);
+            const uid = cred.user.uid;
+            // Immediately sign out the new user from secondary instance (cleanup)
+            try { await signOut(secondaryAuth); } catch(_) {}
+            await setUserRole(uid, 'viewer');
+            await fbUpdate('viewers', { [uid]: email });
+            ensureViewerPermissions(uid);
+            await logActivity(currentUser?.email, "Added viewer", email);
+            showToast(`Viewer ${email} added`, "success");
+            return true;
+        } catch(e) { showToast(e.message, "error"); return false; }
+    }
+
+    async function removeViewer(uid, email) {
+        if (email === ADMIN_EMAIL) return false;
+        try {
+            await fbUpdate('viewers', { [uid]: null });
+            delete viewerPermissions[uid];
+            await savePermissions();
+            await fbSet(`${PATHS.USER_ROLES}/${uid}`, { role: 'revoked', email });
+            await logActivity(currentUser?.email, "Removed viewer", email);
+            showToast(`Viewer ${email} removed`, "success");
+            return true;
+        } catch(e) { showToast(e.message, "error"); return false; }
+    }
+
+    async function submitAccessRequest(email) {
+        email = email.trim().toLowerCase();
+        if (!email) { showToast("Enter an email address", "warning"); return false; }
+        try {
+            const viewers = await fbGet('viewers') || {};
+            if (Object.values(viewers).some(e => e.toLowerCase() === email) || email === ADMIN_EMAIL.toLowerCase()) {
+                showToast("Email already has access.", "warning"); return false;
+            }
+            const reqs = await fbGet(PATHS.ACCESS_REQUESTS) || {};
+            if (Object.values(reqs).some(r => r.email === email && r.status === 'pending')) {
+                showToast("Request already pending.", "warning"); return false;
+            }
+            await fbPush(PATHS.ACCESS_REQUESTS, { email, status: 'pending', timestamp: new Date().toISOString() });
+            showToast("✅ Request submitted successfully!", "success");
+            return true;
+        } catch(e) { showToast(e.message, "error"); return false; }
+    }
+
+    async function getAccessRequests() {
+        const reqs = await fbGet(PATHS.ACCESS_REQUESTS);
+        if (!reqs) return [];
+        return Object.entries(reqs).map(([id, v]) => ({ id, ...v })).filter(r => r.status === 'pending');
+    }
+
+    async function rejectRequest(id) { await fbUpdate(`${PATHS.ACCESS_REQUESTS}/${id}`, { status: 'rejected' }); }
+
+    // ===== PDF GENERATION (permission-aware, mode: 'print' or 'share') =====
+    async function generateFinancePDF(mode = 'print') {
+        const isAdmin = userRole === 'admin';
+        let viewerPerms = null;
+        if (!isAdmin && currentUser) {
+            ensureViewerPermissions(currentUser.uid);
+            viewerPerms = viewerPermissions[currentUser.uid];
+        }
+        const getEffectivePerms = (tablePerms) => {
+            if (isAdmin) return { view: true, edit: true, addRow: true, deleteRow: true, addColumn: true, deleteColumn: true, dragRows: true, dragColumns: true, print: true, share: true };
+            return tablePerms || getDefaultTablePerms();
+        };
+        const invP = getEffectivePerms(viewerPerms?.invoice);
+        const accP = getEffectivePerms(viewerPerms?.accounts);
+        const fibP = getEffectivePerms(viewerPerms?.fib);
+
+        // Check if user has ANY permission for this mode
+        const permKey = mode;
+        const hasAnyTablePerm = invP[permKey] || accP[permKey] || fibP[permKey];
+        if (!hasAnyTablePerm && !isAdmin) {
+            showToast(`No ${mode} permission for any table. Contact admin.`, 'error', 4000);
+            return null;
+        }
+
+        const buildTable = (data, cols, title, accent) => {
+            if (!data.length) return '';
+            const getCellStyle = (row, colKey) => {
+                const color = row._cellColors?.[colKey];
+                if (!color) return 'color:#475569';
+                const brightness = getColorBrightness(color);
+                const textColor = brightness < 128 ? '#ffffff' : '#1e293b';
+                return `background-color:${color};color:${textColor};-webkit-print-color-adjust:exact;print-color-adjust:exact`;
+            };
+            return `
+            <div style="margin-bottom:28px">
+                <h2 style="font-size:15px;font-weight:700;color:${accent};margin:0 0 8px;border-bottom:2px solid ${accent};padding-bottom:4px">${title}</h2>
+                <table style="width:100%;border-collapse:collapse;font-size:9px;-webkit-print-color-adjust:exact;print-color-adjust:exact">
+                    <thead><tr style="background:#f1f5f9;-webkit-print-color-adjust:exact;print-color-adjust:exact">${cols.map(c => `<th style="padding:5px 7px;text-align:left;border:1px solid #cbd5e1;font-weight:600;color:#334155;white-space:nowrap">${escapeHtml(c.label)}</th>`).join('')}</tr></thead>
+                    <tbody>${data.map(r => `<tr>${cols.map(c => `<td style="padding:4px 7px;border:1px solid #e2e8f0;${getCellStyle(r, c.key)}">${escapeHtml(r[c.key] || '')}</td>`).join('')}</tr>`).join('')}</tbody>
+                </table>
+            </div>`;
+        };
+
+        const today = getBaghdadDate();
+        const modeLabel = mode === 'print' ? 'Print Copy' : 'Shared Copy';
+        let html = `<div style="font-family:Arial,Helvetica,sans-serif;padding:20px;max-width:1100px;margin:0 auto;color:#1e293b;-webkit-print-color-adjust:exact;print-color-adjust:exact">
+            <div style="text-align:center;margin-bottom:20px;border-bottom:3px solid #3373ff;padding-bottom:12px">
+                <h1 style="font-size:22px;font-weight:800;color:#1e293b;margin:0">📊 Finance Vault Report</h1>
+                <p style="font-size:11px;color:#64748b;margin:4px 0 0">Generated: ${today} · Baghdad Time · ${modeLabel}</p>
+            </div>`;
+
+        // Only include tables where user has BOTH view AND the mode permission (print/share)
+        if (invP.view && invP[permKey]) html += buildTable(invoiceData, invoiceColumns, 'Invoice Master Grid', '#1a53f5');
+        if (accP.view && accP[permKey]) html += buildTable(accountsData, accountsColumns, 'Accounts Summary', '#059669');
+        if (fibP.view && fibP[permKey]) html += buildTable(fibData, fibColumns, 'FIB Balance Request Details', '#7c3aed');
+
+        // Check if any table was actually included
+        const hasContent = html.indexOf('margin-bottom:28px') !== -1;
+        if (!hasContent) {
+            html += `<div style="text-align:center;padding:40px;color:#94a3b8">
+                <p style="font-size:14px;margin:0 0 6px">No tables available for ${mode}.</p>
+                <p style="font-size:11px;margin:0">Contact your administrator for access.</p>
+            </div>`;
+        }
+
+        html += `</div>`;
+
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = html;
+        document.body.appendChild(wrapper);
+
+        const filename = `Finance_Vault_${today}_${mode}.pdf`;
+
+        try {
+            const pdf = await html2pdf().from(wrapper).set({
+                margin: [8, 8, 8, 8],
+                filename,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2, useCORS: true, logging: false },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'landscape' }
+            }).toPdf().get('pdf');
+
+            const pdfBlob = pdf.output('blob');
+            document.body.removeChild(wrapper);
+            return { blob: pdfBlob, filename };
+        } catch (e) {
+            console.error('PDF generation error:', e);
+            try { document.body.removeChild(wrapper); } catch(_) {}
+            throw e;
+        }
+    }
+
+    // ===== MAIN RENDER =====
+    async function renderFullApp() {
+        const root = document.getElementById("appRoot");
+        if (!root) return;
+        if (!currentUser) { renderAuthUI(); return; }
+
+        userRole = await getUserRole(currentUser.uid);
+        if (!userRole) {
+            if (currentUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) { await setUserRole(currentUser.uid, 'admin'); userRole = 'admin'; }
+            else { userRole = 'viewer'; await setUserRole(currentUser.uid, 'viewer'); ensureViewerPermissions(currentUser.uid); }
+        } else if (currentUser.email.toLowerCase() === ADMIN_EMAIL.toLowerCase() && userRole !== 'admin') {
+            await setUserRole(currentUser.uid, 'admin'); userRole = 'admin';
+        }
+
+        const isAdmin = userRole === 'admin', isViewer = userRole === 'viewer';
+        let viewerPerms = null;
+        if (isViewer) { ensureViewerPermissions(currentUser.uid); viewerPerms = viewerPermissions[currentUser.uid]; }
+
+        const getEffectivePerms = (tablePerms) => {
+            if (isAdmin) return { view: true, edit: true, addRow: true, deleteRow: true, addColumn: true, deleteColumn: true, dragRows: true, dragColumns: true, print: true, share: true };
+            return tablePerms || getDefaultTablePerms();
+        };
+
+        const invP = getEffectivePerms(viewerPerms?.invoice), accP = getEffectivePerms(viewerPerms?.accounts), fibP = getEffectivePerms(viewerPerms?.fib), drP = getEffectivePerms(viewerPerms?.dailyReport), dashP = getEffectivePerms(viewerPerms?.dashboard);
+
+        const renderTableActionBtns = (table, perms) => {
+            let btns = '';
+            if (isAdmin || perms.addRow) btns += `<button id="add_${table}_row" class="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium bg-brand-50 text-brand-700 hover:bg-brand-100 active:bg-brand-200 transition min-h-[36px] sm:min-h-[32px]"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg><span class="hidden sm:inline">Row</span><span class="sm:hidden">+</span></button>`;
+            if (isAdmin || perms.addColumn) btns += `<button id="add_${table}_col" class="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-50 text-purple-700 hover:bg-purple-100 active:bg-purple-200 transition min-h-[36px] sm:min-h-[32px]"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg><span class="hidden sm:inline">Column</span><span class="sm:hidden">Col</span></button>`;
+            if (isAdmin) btns += `<button id="reset_${table}_btn" class="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-600 hover:bg-red-100 active:bg-red-200 transition min-h-[36px] sm:min-h-[32px]"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg><span class="hidden sm:inline">Reset</span><span class="sm:hidden">↺</span></button>`;
+            return btns;
+        };
+
+        const renderHeaders = (cols, table, perms, canDragCols) => cols.map(c =>
+            `<th class="draggable-column px-3 py-3 text-left text-xs font-semibold text-surface-600 uppercase tracking-wider bg-surface-50/80 border-b border-surface-200 ${canDragCols ? 'cursor-grab active:cursor-grabbing' : ''}">
+                <span class="col-label-editable" data-table="${table}" data-key="${c.key}" data-can-rename="${(isAdmin || perms?.addColumn) ? '1' : '0'}" ${(isAdmin || perms?.addColumn) ? 'title="Double-click to rename"' : ''}>${escapeHtml(c.label)}</span>${(isAdmin || perms?.deleteColumn) ? `<button class="remove-col-btn ml-1.5 text-red-400 hover:text-red-600 text-[10px] font-bold" data-table="${table}" data-key="${c.key}" title="Remove column">✖</button>` : ''}
+            </th>`).join('');
+
+        const invDC = invP.dragColumns, accDC = accP.dragColumns, fibDC = fibP.dragColumns;
+        const canPrintAny = isAdmin || (invP.print || accP.print || fibP.print);
+        const canShareAny = isAdmin || (invP.share || accP.share || fibP.share);
+
+        let sections = '';
+
+        // Dashboard Overview section for viewers
+        if (!isAdmin && dashP.view) {
+            sections += `
+            <div class="section-card bg-white rounded-2xl border border-surface-200/60 shadow-sm overflow-hidden fade-in-up" style="animation-delay:0s">
+                <div class="flex flex-wrap items-center justify-between gap-2 sm:gap-3 px-3 sm:px-6 py-3 sm:py-4 bg-gradient-to-r from-brand-50/60 to-white border-b border-surface-200">
+                    <div class="flex items-center gap-2 sm:gap-2.5">
+                        <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-brand-100 flex items-center justify-center text-brand-600">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                        </div>
+                        <h2 class="text-sm sm:text-lg font-bold bg-gradient-to-r from-brand-700 to-brand-900 bg-clip-text text-transparent">Dashboard Overview</h2>
+                    </div>
+                </div>
+                <div class="px-3 sm:px-6 py-3 sm:py-4">
+                    <div id="viewerDashboardContent"></div>
+                </div>
+            </div>`;
+        }
+
+        // Invoice section
+        if (isAdmin || invP.view) {
+            sections += `
+            <div class="section-card bg-white rounded-2xl border border-surface-200/60 shadow-sm overflow-hidden fade-in-up" style="animation-delay:0.05s">
+                <div class="flex flex-wrap items-center justify-between gap-2 sm:gap-3 px-3 sm:px-6 py-3 sm:py-4 bg-gradient-to-r from-brand-50/60 to-white border-b border-surface-200">
+                    <div class="flex items-center gap-2 sm:gap-2.5">
+                        <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-brand-100 flex items-center justify-center text-brand-600">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+                        </div>
+                        <h2 class="text-sm sm:text-lg font-bold bg-gradient-to-r from-brand-700 to-brand-900 bg-clip-text text-transparent">Invoice Master Grid</h2>
+                    </div>
+                    <div class="flex flex-wrap gap-1.5 sm:gap-2" id="invoice-actions-container">${renderTableActionBtns('invoice', invP)}</div>
+                </div>
+                <div class="overflow-x-auto px-1 sm:px-4 py-2 sm:py-3">
+                    <table class="editable-table w-full border-collapse min-w-[1000px]" id="invoice-table">
+                        <thead><tr>
+                            <th class="w-[36px] bg-surface-50/80 border-b border-surface-200"></th>
+                            ${renderHeaders(invoiceColumns, 'invoice', invP, invDC)}
+                            <th class="w-[60px] bg-surface-50/80 border-b border-surface-200 text-xs font-semibold text-surface-400 uppercase">Act</th>
+                        </tr></thead>
+                        <tbody id="invoice-tbody"></tbody>
+                    </table>
+                </div>
+            </div>`;
+        }
+
+        // Accounts section
+        if (isAdmin || accP.view) {
+            sections += `
+            <div class="section-card bg-white rounded-2xl border border-surface-200/60 shadow-sm overflow-hidden fade-in-up" style="animation-delay:0.1s">
+                <div class="flex flex-wrap items-center justify-between gap-2 sm:gap-3 px-3 sm:px-6 py-3 sm:py-4 bg-gradient-to-r from-emerald-50/60 to-white border-b border-surface-200">
+                    <div class="flex items-center gap-2 sm:gap-2.5">
+                        <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>
+                        </div>
+                        <h2 class="text-sm sm:text-lg font-bold bg-gradient-to-r from-emerald-700 to-emerald-900 bg-clip-text text-transparent">Accounts Summary</h2>
+                    </div>
+                    <div class="flex flex-wrap gap-1.5 sm:gap-2" id="accounts-actions-container">${renderTableActionBtns('accounts', accP)}</div>
+                </div>
+                <div class="overflow-x-auto px-1 sm:px-4 py-2 sm:py-3">
+                    <table class="editable-table w-full border-collapse min-w-[800px]" id="accounts-table">
+                        <thead><tr>
+                            <th class="w-[36px] bg-surface-50/80 border-b border-surface-200"></th>
+                            ${renderHeaders(accountsColumns, 'accounts', accP, accDC)}
+                            <th class="w-[60px] bg-surface-50/80 border-b border-surface-200 text-xs font-semibold text-surface-400 uppercase">Act</th>
+                        </tr></thead>
+                        <tbody id="accounts-tbody"></tbody>
+                    </table>
+                </div>
+            </div>`;
+        }
+
+        // FIB section
+        if (isAdmin || fibP.view) {
+            sections += `
+            <div class="section-card bg-white rounded-2xl border border-surface-200/60 shadow-sm overflow-hidden fade-in-up" style="animation-delay:0.15s">
+                <div class="flex flex-wrap items-center justify-between gap-2 sm:gap-3 px-3 sm:px-6 py-3 sm:py-4 bg-gradient-to-r from-purple-50/60 to-white border-b border-surface-200">
+                    <div class="flex items-center gap-2 sm:gap-2.5">
+                        <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="5" rx="2"/><path d="M2 10h20"/></svg>
+                        </div>
+                        <h2 class="text-sm sm:text-lg font-bold bg-gradient-to-r from-purple-700 to-purple-900 bg-clip-text text-transparent">FIB Balance Request Details</h2>
+                    </div>
+                    <div class="flex flex-wrap gap-1.5 sm:gap-2" id="fib-actions-container">${renderTableActionBtns('fib', fibP)}</div>
+                </div>
+                <div class="overflow-x-auto px-1 sm:px-4 py-2 sm:py-3">
+                    <table class="editable-table w-full border-collapse min-w-[700px]" id="fib-table">
+                        <thead><tr>
+                            <th class="w-[36px] bg-surface-50/80 border-b border-surface-200"></th>
+                            ${renderHeaders(fibColumns, 'fib', fibP, fibDC)}
+                            <th class="w-[60px] bg-surface-50/80 border-b border-surface-200 text-xs font-semibold text-surface-400 uppercase">Act</th>
+                        </tr></thead>
+                        <tbody id="fib-tbody"></tbody>
+                    </table>
+                </div>
+            </div>`;
+        }
+
+        // Daily Reports & Snapshots section
+        if (isAdmin || drP.view) {
+            sections += `
+            <div class="section-card bg-white rounded-2xl border border-surface-200/60 shadow-sm overflow-hidden fade-in-up" style="animation-delay:0.2s">
+                <div class="flex flex-wrap items-center justify-between gap-2 sm:gap-3 px-3 sm:px-6 py-3 sm:py-4 bg-gradient-to-r from-amber-50/60 to-white border-b border-surface-200">
+                    <div class="flex items-center gap-2 sm:gap-2.5">
+                        <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-amber-100 flex items-center justify-center text-amber-600 text-base sm:text-lg">📅</div>
+                        <h2 class="text-sm sm:text-lg font-bold bg-gradient-to-r from-amber-700 to-amber-900 bg-clip-text text-transparent">Daily Reports & Snapshots</h2>
+                    </div>
+                    <div class="flex flex-wrap gap-1.5 sm:gap-2">
+                        ${(isAdmin || drP.share) ? `<button class="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium bg-brand-50 text-brand-700 hover:bg-brand-100 active:bg-brand-200 transition min-h-[36px] sm:min-h-[32px]" id="saveSnapshotBtn">💾 <span class="hidden sm:inline">Save Today's</span> Snapshot</button>` : ''}
+                    </div>
+                </div>
+                <div class="px-3 sm:px-6 py-3 sm:py-4">
+                    <div class="flex flex-wrap gap-2 items-center">
+                        <select id="reportDateSelect" class="px-3 sm:px-4 py-2.5 rounded-xl border border-surface-200 text-sm focus:border-brand-400 outline-none min-w-[160px] sm:min-w-[180px]"></select>
+                        <button class="bg-emerald-600 text-white px-3 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium hover:bg-emerald-700 transition min-h-[44px]" id="generateReportBtn">📊 Generate</button>
+                        ${(isAdmin || drP.print) ? `<button class="bg-red-50 text-red-600 px-3 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium hover:bg-red-100 transition min-h-[44px]" id="downloadPdfBtn">📄 PDF</button>` : ''}
+                        <button class="bg-brand-100 text-brand-700 px-3 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium hover:bg-brand-200 transition min-h-[44px]" id="downloadCsvBtn">⬇️ CSV</button>
+                    </div>
+                    <div id="reportContent"></div>
+                </div>
+            </div>`;
+        }
+
+        // Admin panel
+        let adminHTML = '';
+        if (isAdmin) {
+            adminHTML = `
+            <div class="admin-panel no-print bg-gradient-to-br from-amber-50 to-orange-50/50 rounded-2xl border border-amber-200/60 shadow-sm overflow-hidden mx-2 sm:mx-6 mt-3 sm:mt-4 fade-in-up">
+                <div class="flex flex-wrap gap-0.5 sm:gap-1 px-2 sm:px-4 pt-3 sm:pt-4 pb-0 border-b border-amber-200/50 overflow-x-auto">
+                    <button class="admin-tab ${lastActiveAdminTab === 'dashboard' ? 'active' : 'text-surface-500'} px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-medium rounded-t-lg hover:bg-white/60 transition whitespace-nowrap" data-tab="dashboard">📊 Dashboard</button>
+                    <button class="admin-tab ${lastActiveAdminTab === 'requests' ? 'active' : 'text-surface-500'} px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-medium rounded-t-lg transition whitespace-nowrap" data-tab="requests">
+                        🔔 Requests <span id="pendingCountBadge" class="badge-pulse inline-flex items-center justify-center ml-1 min-w-[20px] h-5 text-[10px] font-bold bg-red-500 text-white rounded-full px-1">0</span>
+                    </button>
+                    <button class="admin-tab ${lastActiveAdminTab === 'viewers' ? 'active' : 'text-surface-500'} px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-medium rounded-t-lg hover:bg-white/60 transition whitespace-nowrap" data-tab="viewers">👥 Viewers</button>
+                    <button class="admin-tab ${lastActiveAdminTab === 'permissions' ? 'active' : 'text-surface-500'} px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-medium rounded-t-lg hover:bg-white/60 transition whitespace-nowrap" data-tab="permissions">🔑 Permissions</button>
+                    <button class="admin-tab ${lastActiveAdminTab === 'logs' ? 'active' : 'text-surface-500'} px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-medium rounded-t-lg hover:bg-white/60 transition whitespace-nowrap" data-tab="logs">📋 Activity Log</button>
+                </div>
+                <div class="p-3 sm:p-5">
+                    <div id="tab-dashboard" class="tab-pane ${lastActiveAdminTab === 'dashboard' ? 'active' : ''}">
+                        <h3 class="font-semibold text-surface-800 text-sm sm:text-base mb-4">📊 Dashboard Overview</h3>
+                        <div id="dashboardContent"></div>
+                    </div>
+                    <div id="tab-requests" class="tab-pane ${lastActiveAdminTab === 'requests' ? 'active' : ''}">
+                        <h3 class="font-semibold text-surface-800 text-sm sm:text-base mb-3">Pending Access Requests</h3>
+                        <div id="requestsList" class="space-y-2">Loading...</div>
+                    </div>
+                    <div id="tab-viewers" class="tab-pane ${lastActiveAdminTab === 'viewers' ? 'active' : ''}">
+                        <h3 class="font-semibold text-surface-800 text-sm sm:text-base mb-3">Viewer Management</h3>
+                        <div class="flex flex-wrap gap-2 mb-4">
+                            <input type="email" id="newViewerEmail" placeholder="colleague@company.com" class="flex-1 min-w-[160px] sm:min-w-[200px] px-3 sm:px-4 py-2.5 rounded-xl border border-surface-200 text-sm focus:border-brand-400 focus:ring-2 focus:ring-brand-100 outline-none transition">
+                            <input type="password" id="newViewerPassword" placeholder="Password" class="w-[120px] sm:w-[140px] px-3 sm:px-4 py-2.5 rounded-xl border border-surface-200 text-sm focus:border-brand-400 focus:ring-2 focus:ring-brand-100 outline-none transition">
+                            <button class="bg-emerald-600 text-white px-3 sm:px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium hover:bg-emerald-700 transition flex items-center gap-1.5 min-h-[44px]" id="addViewerBtn">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></svg>
+                                Add Viewer
+                            </button>
+                        </div>
+                        <div id="viewerListContainer" class="flex flex-wrap gap-2 mb-2"></div>
+                    </div>
+                    <div id="tab-permissions" class="tab-pane ${lastActiveAdminTab === 'permissions' ? 'active' : ''}">
+                        <h3 class="font-semibold text-surface-800 text-sm sm:text-base mb-3">Permission Matrix</h3>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-xs border-collapse" id="permTable">
+                                <thead><tr class="bg-surface-100">
+                                    <th class="px-3 py-2 text-left font-semibold text-surface-600 border border-surface-200">Viewer</th>
+                                    <th class="px-3 py-2 text-left font-semibold text-surface-600 border border-surface-200">Table</th>
+                                    <th class="px-3 py-2 text-center font-semibold text-surface-600 border border-surface-200">View</th>
+                                    <th class="px-3 py-2 text-center font-semibold text-surface-600 border border-surface-200">Edit</th>
+                                    <th class="px-3 py-2 text-center font-semibold text-surface-600 border border-surface-200">Add Row</th>
+                                    <th class="px-3 py-2 text-center font-semibold text-surface-600 border border-surface-200">Del Row</th>
+                                    <th class="px-3 py-2 text-center font-semibold text-surface-600 border border-surface-200">Add Col</th>
+                                    <th class="px-3 py-2 text-center font-semibold text-surface-600 border border-surface-200">Del Col</th>
+                                    <th class="px-3 py-2 text-center font-semibold text-surface-600 border border-surface-200">Drag Rows</th>
+                                    <th class="px-3 py-2 text-center font-semibold text-surface-600 border border-surface-200">Drag Cols</th>
+                                    <th class="px-3 py-2 text-center font-semibold text-surface-600 border border-surface-200">🖨️ Print</th>
+                                    <th class="px-3 py-2 text-center font-semibold text-surface-600 border border-surface-200">📤 Share</th>
+                                </tr></thead>
+                                <tbody id="permTableBody"></tbody>
+                            </table>
+                        </div>
+                        <div class="mt-4 flex items-center gap-3">
+                            <button id="savePermsBtn" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800 transition shadow-sm min-h-[44px]">💾 Save Changes</button>
+                            <span id="permUnsavedHint" class="text-xs text-amber-600 font-medium hidden">⚠️ Unsaved changes</span>
+                        </div>
+                    </div>
+                    
+                    <div id="tab-logs" class="tab-pane ${lastActiveAdminTab === 'logs' ? 'active' : ''}">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="font-semibold text-surface-800 text-sm sm:text-base">Activity Log</h3>
+                            <button class="text-xs text-red-500 hover:text-red-700 font-medium transition min-h-[36px] px-2" id="clearLogBtn">Clear Log</button>
+                        </div>
+                        <!-- Activity Log Filters -->
+                        <div class="flex flex-wrap gap-2 mb-3 items-center">
+                            <div class="relative flex-1 min-w-[160px]">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400 pointer-events-none"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                                <input type="text" id="logUserFilter" placeholder="Search by user email..." class="w-full pl-9 pr-3 py-2.5 rounded-xl border border-surface-200 text-sm focus:border-brand-400 focus:ring-2 focus:ring-brand-100 outline-none transition">
+                            </div>
+                            <div class="relative">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400 pointer-events-none"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+                                <input type="date" id="logDateFilter" class="pl-9 pr-3 py-2.5 rounded-xl border border-surface-200 text-sm focus:border-brand-400 focus:ring-2 focus:ring-brand-100 outline-none transition min-w-[150px]">
+                            </div>
+                            <select id="logActionFilter" class="px-3 py-2.5 rounded-xl border border-surface-200 text-sm focus:border-brand-400 focus:ring-2 focus:ring-brand-100 outline-none transition min-w-[140px]">
+                                <option value="">All Actions</option>
+                                <option value="Logged in">Logged in</option>
+                                <option value="Logged out">Logged out</option>
+                                <option value="Added viewer">Added viewer</option>
+                                <option value="Removed viewer">Removed viewer</option>
+                                <option value="Changed permission">Changed permission</option>
+                                <option value="Updated permission matrix">Updated permission matrix</option>
+                                <option value="Added invoice row">Added invoice row</option>
+                                <option value="Added accounts row">Added accounts row</option>
+                                <option value="Added FIB row">Added FIB row</option>
+                                <option value="Deleted row">Deleted row</option>
+                                <option value="Added column">Added column</option>
+                                <option value="Removed column">Removed column</option>
+                                <option value="Reordered rows">Reordered rows</option>
+                                <option value="Reordered columns">Reordered columns</option>
+                                <option value="Saved daily snapshot">Saved daily snapshot</option>
+                                <option value="Generated report">Generated report</option>
+                                <option value="Downloaded CSV">Downloaded CSV</option>
+                                <option value="Downloaded PDF report">Downloaded PDF report</option>
+                                <option value="Printed PDF report">Printed PDF report</option>
+                                <option value="Shared PDF">Shared PDF</option>
+                                <option value="Reset">Reset</option>
+                                <option value="Cleared activity log">Cleared activity log</option>
+                            </select>
+                            <button id="logClearFilters" class="px-3 py-2.5 rounded-xl border border-surface-200 text-xs font-medium text-surface-500 hover:bg-surface-100 hover:text-surface-700 transition min-h-[40px]" title="Clear all filters">✕ Clear</button>
+                        </div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span id="logResultCount" class="text-xs text-surface-400"></span>
+                        </div>
+                        <div id="activityLogContainer" class="max-h-[400px] overflow-y-auto bg-white rounded-xl border border-surface-200"></div>
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        // Full layout
+        root.innerHTML = `
+        <div class="app-container max-w-[2000px] mx-auto bg-surface-100 min-h-screen overflow-x-hidden">
+            <!-- Top bar -->
+            <div class="no-print bg-white/80 backdrop-blur-md border-b border-surface-200 sticky top-0 z-50" style="-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)">
+                <div class="max-w-[1600px] mx-auto px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between gap-2 overflow-x-hidden">
+                    <div class="flex items-center gap-2.5 min-w-0">
+                        <div class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white font-bold text-xs sm:text-sm shadow-md shadow-brand-200 shrink-0">FV</div>
+                        <div class="min-w-0">
+                            <div class="text-xs sm:text-sm font-semibold text-surface-800 truncate max-w-[140px] sm:max-w-[300px]" title="${escapeHtml(currentUser.email)}">🔒 ${escapeHtml(currentUser.email)}</div>
+                            <div class="text-[10px] sm:text-[10px] font-medium ${isAdmin ? 'text-brand-600' : 'text-surface-500'}">${isAdmin ? '👑 Administrator' : '👁️ Viewer'}</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                        ${canPrintAny ? `<button class="print-btn flex items-center gap-1 px-2.5 sm:px-3 py-2 rounded-lg sm:rounded-xl text-xs font-medium bg-amber-50 text-amber-700 hover:bg-amber-100 active:bg-amber-200 transition min-h-[40px]" id="printBtn" title="Print PDF">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect width="12" height="8" x="6" y="14"/></svg>
+                            <span class="hidden sm:inline">Print</span>
+                        </button>` : ''}
+                        ${canShareAny ? `<button class="flex items-center gap-1 px-2.5 sm:px-3 py-2 rounded-lg sm:rounded-xl text-xs font-medium bg-violet-50 text-violet-700 hover:bg-violet-100 active:bg-violet-200 transition min-h-[40px]" id="shareBtn" title="Share PDF">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                            <span class="hidden sm:inline">Share</span>
+                        </button>` : ''}
+                        <button class="flex items-center gap-1 px-2.5 sm:px-3 py-2 rounded-lg sm:rounded-xl text-xs font-medium bg-red-50 text-red-600 hover:bg-red-100 transition min-h-[40px]" id="logoutBtn" title="Logout">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+                            <span class="hidden sm:inline">Logout</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            ${adminHTML}
+
+            <!-- Data sections -->
+            <div class="px-2 sm:px-6 py-3 sm:py-4 space-y-3 sm:space-y-5 max-w-full overflow-x-hidden">
+                ${sections}
+            </div>
+
+            <!-- Footer -->
+            <div class="no-print px-3 sm:px-6 py-2.5 sm:py-3 bg-surface-50 border-t border-surface-200 flex flex-wrap justify-between items-center text-[10px] sm:text-xs text-surface-400 gap-2">
+                <span>${isAdmin ? '👑 Admin: full control' : '👁️ Limited by permissions'}</span>
+                <span>Firebase · Baghdad Time · Drag & Drop · Right-click cell to color 🎨</span>
+            </div>
+        </div>`;
+
+        // ===== POST-RENDER SETUP =====
+        const refresh = () => {
+            if (document.getElementById("invoice-tbody")) {
+                renderDynamicTable("invoice-tbody", invoiceData, invoiceColumns, isAdmin, "Invoice", invP);
+                initDraggableTable("invoice-table", invoiceData, invoiceColumns, "Invoice", invP.dragRows, invP.dragColumns);
+            }
+            if (document.getElementById("accounts-tbody")) {
+                renderDynamicTable("accounts-tbody", accountsData, accountsColumns, isAdmin, "Accounts", accP);
+                initDraggableTable("accounts-table", accountsData, accountsColumns, "Accounts", accP.dragRows, accP.dragColumns);
+            }
+            if (document.getElementById("fib-tbody")) {
+                renderDynamicTable("fib-tbody", fibData, fibColumns, isAdmin, "FIB", fibP);
+                initDraggableTable("fib-table", fibData, fibColumns, "FIB", fibP.dragRows, fibP.dragColumns);
+            }
+            if (isAdmin) {
+                document.querySelectorAll('.remove-col-btn').forEach(b => b.replaceWith(b.cloneNode(true)));
+                delegateEvent('.app-container', 'click', '.remove-col-btn', async function(e) {
+                    const tbl = this.dataset.table, key = this.dataset.key;
+                    if (await customConfirm("Remove this column and all its data? This cannot be undone.", "Remove Column", true)) { await removeColumnFromTable(tbl, key); renderFullApp(); }
+                });
+            }
+        };
+        refresh();
+
+        // Double-click to rename column
+        delegateEvent('.app-container', 'dblclick', '.col-label-editable', function(e) {
+            if (this.dataset.canRename !== '1') return;
+            e.stopPropagation();
+            e.preventDefault();
+
+            const span = this;
+            const tableName = span.dataset.table;
+            const colKey = span.dataset.key;
+            const currentLabel = span.textContent.trim();
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = currentLabel;
+            input.className = 'col-rename-input w-full bg-white border border-brand-400 rounded px-1.5 py-0.5 text-xs font-semibold text-surface-800 outline-none';
+
+            span.textContent = '';
+            span.appendChild(input);
+            input.focus();
+            input.select();
+
+            let saved = false;
+
+            const save = async () => {
+                if (saved) return;
+                saved = true;
+                const newLabel = input.value.trim() || currentLabel;
+                let cols;
+                if (tableName === 'invoice') cols = invoiceColumns;
+                else if (tableName === 'accounts') cols = accountsColumns;
+                else cols = fibColumns;
+
+                const col = cols.find(c => c.key === colKey);
+                if (col && col.label !== newLabel) {
+                    col.label = newLabel;
+                    await saveColumnsToStorage();
+                    await logActivity(currentUser?.email, `Renamed column in ${tableName}`, `${currentLabel} → ${newLabel}`);
+                    showToast(`Column renamed to "${newLabel}"`, 'success');
+                }
+                renderFullApp();
+            };
+
+            const cancel = () => {
+                if (saved) return;
+                saved = true;
+                renderFullApp();
+            };
+
+            input.addEventListener('blur', save);
+            input.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter') { ev.preventDefault(); input.blur(); }
+                if (ev.key === 'Escape') { input.removeEventListener('blur', save); cancel(); }
+            });
+        });
+
+        // Admin tab switching
+        if (isAdmin) {
+            document.querySelectorAll('.admin-tab').forEach(t => t.addEventListener('click', () => {
+                const target = t.dataset.tab;
+                lastActiveAdminTab = target;
+                document.querySelectorAll('.admin-tab').forEach(tb => { tb.classList.remove('active'); tb.classList.add('text-surface-500'); });
+                document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+                t.classList.add('active'); t.classList.remove('text-surface-500');
+                document.getElementById(`tab-${target}`).classList.add('active');
+            }));
+
+            // Access requests
+            const reqs = await getAccessRequests();
+            const badge = document.getElementById('pendingCountBadge');
+            if (badge) { badge.textContent = reqs.length; badge.style.display = reqs.length ? 'inline-flex' : 'none'; }
+            const reqDiv = document.getElementById("requestsList");
+            if (reqs.length) {
+                reqDiv.innerHTML = reqs.map(r => `
+                    <div class="flex flex-wrap items-center justify-between bg-white rounded-xl px-4 py-3 border border-surface-200 gap-2">
+                        <div>
+                            <span class="font-medium text-sm text-surface-800">${escapeHtml(r.email)}</span>
+                            <span class="text-xs text-surface-400 ml-2">${formatBaghdadDate(r.timestamp)}</span>
+                        </div>
+                        <div class="flex gap-2">
+                            <button class="approve-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition" data-id="${r.id}" data-email="${escapeHtml(r.email)}">Approve</button>
+                            <button class="reject-btn px-3 py-1.5 rounded-lg text-xs font-medium bg-red-500 text-white hover:bg-red-600 transition" data-id="${r.id}">Reject</button>
+                        </div>
+                    </div>`).join('');
+                reqDiv.querySelectorAll('.approve-btn').forEach(b => b.addEventListener('click', async () => {
+                    const id = b.dataset.id, email = b.dataset.email;
+                    const pwd = await customPrompt('Password', `Set a password for ${email}`, 'Approve Access Request', 'password');
+                    if (!pwd) return;
+                    if (await addViewer(email, pwd)) { await fbUpdate(`${PATHS.ACCESS_REQUESTS}/${id}`, { status: 'approved' }); renderFullApp(); }
+                }));
+                reqDiv.querySelectorAll('.reject-btn').forEach(b => b.addEventListener('click', async () => {
+                    if (await customConfirm("Reject this access request? The user will need to submit a new request.", "Reject Request", true)) { await rejectRequest(b.dataset.id); renderFullApp(); }
+                }));
+            } else {
+                reqDiv.innerHTML = '<div class="text-sm text-surface-400 text-center py-6">No pending requests ✨</div>';
+            }
+
+            // Table action buttons - Row/Column/Reset
+            delegateEvent('.app-container', 'click', '#add_invoice_row', async () => {
+                const nr = { _cellColors: {} }; invoiceColumns.forEach(c => nr[c.key] = ""); invoiceData.push(nr);
+                await saveDataToStorage(); refresh(); await logActivity(currentUser.email, "Added invoice row");
+                showToast("Row added to Invoice", "success");
+            });
+            delegateEvent('.app-container', 'click', '#add_invoice_col', async () => {
+                const n = await customPrompt('Column Name', 'Enter new column name', 'Add Column to Invoice');
+                if (n) { await addColumnToTable('invoice', n); renderFullApp(); }
+            });
+            delegateEvent('.app-container', 'click', '#reset_invoice_btn', async () => {
+                if (await customConfirm("Reset Invoice table to defaults? This will clear all data and cannot be undone.", "Reset Invoice Table", true)) {
+                    invoiceColumns = JSON.parse(JSON.stringify(DEFAULT_INVOICE_COLUMNS)); invoiceData = [];
+                    await saveAllToStorage(); await loadColumnsAndData(); renderFullApp();
+                    await logActivity(currentUser.email, "Reset Invoice"); showToast("Invoice table reset", "info");
+                }
+            });
+            delegateEvent('.app-container', 'click', '#add_accounts_row', async () => {
+                const nr = { _cellColors: {} }; accountsColumns.forEach(c => nr[c.key] = ""); accountsData.push(nr);
+                await saveDataToStorage(); refresh(); await logActivity(currentUser.email, "Added accounts row");
+                showToast("Row added to Accounts", "success");
+            });
+            delegateEvent('.app-container', 'click', '#add_accounts_col', async () => {
+                const n = await customPrompt('Column Name', 'Enter new column name', 'Add Column to Accounts');
+                if (n) { await addColumnToTable('accounts', n); renderFullApp(); }
+            });
+            delegateEvent('.app-container', 'click', '#reset_accounts_btn', async () => {
+                if (await customConfirm("Reset Accounts table to defaults? This will clear all data and cannot be undone.", "Reset Accounts Table", true)) {
+                    accountsColumns = JSON.parse(JSON.stringify(DEFAULT_ACCOUNTS_COLUMNS)); accountsData = [];
+                    await saveAllToStorage(); await loadColumnsAndData(); renderFullApp();
+                    await logActivity(currentUser.email, "Reset Accounts"); showToast("Accounts table reset", "info");
+                }
+            });
+            delegateEvent('.app-container', 'click', '#add_fib_row', async () => {
+                const nr = { _cellColors: {} }; fibColumns.forEach(c => nr[c.key] = ""); fibData.push(nr);
+                await saveDataToStorage(); refresh(); await logActivity(currentUser.email, "Added FIB row");
+                showToast("Row added to FIB", "success");
+            });
+            delegateEvent('.app-container', 'click', '#add_fib_col', async () => {
+                const n = await customPrompt('Column Name', 'Enter new column name', 'Add Column to FIB');
+                if (n) { await addColumnToTable('fib', n); renderFullApp(); }
+            });
+            delegateEvent('.app-container', 'click', '#reset_fib_btn', async () => {
+                if (await customConfirm("Reset FIB table to defaults? This will clear all data and cannot be undone.", "Reset FIB Table", true)) {
+                    fibColumns = JSON.parse(JSON.stringify(DEFAULT_FIB_COLUMNS)); fibData = [];
+                    await saveAllToStorage(); await loadColumnsAndData(); renderFullApp();
+                    await logActivity(currentUser.email, "Reset FIB"); showToast("FIB table reset", "info");
+                }
+            });
+
+            // Viewer management
+            const viewers = await listViewers();
+            const vContainer = document.getElementById("viewerListContainer");
+            if (vContainer) {
+                vContainer.innerHTML = '';
+                for (let uid of viewers) {
+                    const email = (await fbGet(`viewers/${uid}`)) || 'unknown';
+                    vContainer.innerHTML += `
+                        <div class="inline-flex items-center gap-2 bg-white rounded-full px-3 py-1.5 text-xs border border-surface-200 shadow-sm">
+                            <span class="font-medium text-surface-700">${escapeHtml(email)}</span>
+                            <button class="remove-colleague text-red-400 hover:text-red-600 font-bold transition" data-uid="${uid}" data-email="${escapeHtml(email)}">✖</button>
+                        </div>`;
+                }
+            }
+            delegateEvent('.app-container', 'click', '.remove-colleague', async function() {
+                const uid = this.dataset.uid, email = this.dataset.email;
+                if (await customConfirm(`Remove ${email} from viewers? They will lose all access.`, "Remove Viewer", true)) { await removeViewer(uid, email); renderFullApp(); }
+            });
+            delegateEvent('.app-container', 'click', '#addViewerBtn', async () => {
+                const email = document.getElementById("newViewerEmail")?.value.trim();
+                const pwd = document.getElementById("newViewerPassword")?.value;
+                if (email && pwd) {
+                    if (await addViewer(email, pwd)) {
+                        document.getElementById("newViewerEmail").value = '';
+                        document.getElementById("newViewerPassword").value = '';
+                        renderFullApp();
+                    }
+                } else showToast("Enter email and password", "warning");
+            });
+
+            // Permission matrix — with per-viewer color coding
+            const permBody = document.getElementById("permTableBody");
+            if (permBody) {
+                permBody.innerHTML = '';
+                const viewerColors = [
+                    { bg: '#eef5ff', border: '#3373ff', text: '#1a53f5', dot: '#3373ff' },   // brand blue
+                    { bg: '#ecfdf5', border: '#059669', text: '#047857', dot: '#10b981' },   // emerald
+                    { bg: '#faf5ff', border: '#7c3aed', text: '#6d28d9', dot: '#8b5cf6' },   // purple
+                    { bg: '#fff7ed', border: '#ea580c', text: '#c2410c', dot: '#f97316' },   // orange
+                    { bg: '#fdf2f8', border: '#db2777', text: '#be185d', dot: '#ec4899' },   // pink
+                    { bg: '#fefce8', border: '#ca8a04', text: '#a16207', dot: '#eab308' },   // yellow
+                    { bg: '#f0fdf4', border: '#16a34a', text: '#15803d', dot: '#22c55e' },   // green
+                    { bg: '#eff6ff', border: '#2563eb', text: '#1d4ed8', dot: '#3b82f6' },   // blue
+                    { bg: '#fdf4ff', border: '#a855f7', text: '#9333ea', dot: '#c084fc' },   // violet
+                    { bg: '#fff1f2', border: '#e11d48', text: '#be123c', dot: '#f43f5e' },   // rose
+                ];
+                const tables = ['invoice','accounts','fib','dailyReport','dashboard'];
+                const tableDisplayNames = { invoice: 'Invoice', accounts: 'Accounts', fib: 'FIB Balance Request Details', dailyReport: 'Daily Report', dashboard: 'Dashboard Overview' };
+                for (let vi = 0; vi < viewers.length; vi++) {
+                    const uid = viewers[vi];
+                    const email = (await fbGet(`viewers/${uid}`)) || uid;
+                    ensureViewerPermissions(uid);
+                    const perms = viewerPermissions[uid];
+                    const vc = viewerColors[vi % viewerColors.length];
+                    let isFirstRow = true;
+                    for (let tbl of tables) {
+                        const p = perms[tbl] || getDefaultTablePerms();
+                        const row = permBody.insertRow();
+                        row.className = "transition";
+                        row.style.backgroundColor = vc.bg;
+                        // Insert email cell first (index 0) for first row only
+                        if (isFirstRow) {
+                            const emailCell = row.insertCell(0);
+                            emailCell.innerHTML = `<div class="flex items-center gap-2"><span style="width:10px;height:10px;border-radius:50%;background:${vc.dot};display:inline-block;flex-shrink:0"></span><strong style="color:${vc.text}">${escapeHtml(email)}</strong></div>`;
+                            emailCell.className = "px-3 py-2 border border-surface-200";
+                            emailCell.rowSpan = tables.length;
+                            emailCell.style.borderLeft = `4px solid ${vc.border}`;
+                        }
+                        const tblIdx = isFirstRow ? 1 : 0;
+                        const tblCell = row.insertCell(tblIdx);
+                        tblCell.className = "px-3 py-2 border border-surface-200 font-medium text-surface-600";
+                        tblCell.textContent = tableDisplayNames[tbl] || tbl.charAt(0).toUpperCase() + tbl.slice(1);
+                        if (!isFirstRow) {
+                            tblCell.style.borderLeft = `4px solid ${vc.border}`;
+                        }
+                        const addCheck = (act, chk) => {
+                            const cell = row.insertCell();
+                            cell.className = "px-3 py-2 border border-surface-200 text-center";
+                            const cb = document.createElement("input");
+                            cb.type = "checkbox"; cb.checked = chk; cb.className = "perm-checkbox";
+                            cb.addEventListener("change", e => {
+                                if (!viewerPermissions[uid]) viewerPermissions[uid] = getDefaultViewerPermissions();
+                                if (!viewerPermissions[uid][tbl]) viewerPermissions[uid][tbl] = getDefaultTablePerms();
+                                viewerPermissions[uid][tbl][act] = e.target.checked;
+                                const saveBtn = document.getElementById('savePermsBtn');
+                                if (saveBtn) { saveBtn.classList.add('ring-2', 'ring-amber-400', 'animate-pulse'); }
+                            });
+                            cell.appendChild(cb);
+                        };
+                        addCheck('view', p.view); addCheck('edit', p.edit);
+                        addCheck('addRow', p.addRow); addCheck('deleteRow', p.deleteRow);
+                        addCheck('addColumn', p.addColumn); addCheck('deleteColumn', p.deleteColumn);
+                        addCheck('dragRows', p.dragRows||false); addCheck('dragColumns', p.dragColumns||false); addCheck('print', p.print||false); addCheck('share', p.share||false);
+                        isFirstRow = false;
+                    }
+                }
+            }
+
+            // Save permissions button
+            delegateEvent('.app-container', 'click', '#savePermsBtn', async () => {
+                await savePermissions();
+                await logActivity(currentUser?.email, "Updated permission matrix");
+                lastActiveAdminTab = 'permissions';
+                renderFullApp();
+                showToast('Permissions saved successfully!', 'success');
+            });
+
+            // Dashboard
+            renderDashboard();
+
+            // Activity log
+            renderActivityLog();
+            delegateEvent('.app-container', 'click', '#clearLogBtn', clearActivityLog);
+
+            // Activity log filters — real-time filtering
+            const logUserFilter = document.getElementById('logUserFilter');
+            const logDateFilter = document.getElementById('logDateFilter');
+            const logActionFilter = document.getElementById('logActionFilter');
+            const logClearFilters = document.getElementById('logClearFilters');
+
+            if (logUserFilter) logUserFilter.addEventListener('input', () => renderActivityLog());
+            if (logDateFilter) logDateFilter.addEventListener('change', () => renderActivityLog());
+            if (logActionFilter) logActionFilter.addEventListener('change', () => renderActivityLog());
+            if (logClearFilters) logClearFilters.addEventListener('click', () => {
+                if (logUserFilter) logUserFilter.value = '';
+                if (logDateFilter) logDateFilter.value = '';
+                if (logActionFilter) logActionFilter.value = '';
+                renderActivityLog();
+            });
+        }
+
+        // Viewer Dashboard
+        if (!isAdmin) {
+            renderDashboard("viewerDashboardContent");
+        }
+
+        // Daily Reports event handlers (works for both admin and viewer)
+        if (isAdmin || drP.view) {
+            populateReportDateSelect();
+            if (isAdmin || drP.share) {
+                delegateEvent('.app-container', 'click', '#saveSnapshotBtn', () => saveCurrentSnapshot());
+            }
+            delegateEvent('.app-container', 'click', '#generateReportBtn', () => {
+                const d = document.getElementById("reportDateSelect").value;
+                if (d) generateReportForDate(d); else showToast("Select a date first", "warning");
+            });
+            delegateEvent('.app-container', 'click', '#downloadCsvBtn', downloadReportAsCSV);
+            delegateEvent('.app-container', 'click', '#downloadPdfBtn', downloadReportAsPDF);
+        }
+
+        // Global buttons
+        delegateEvent('.app-container', 'click', '#logoutBtn', async () => {
+            await logActivity(currentUser.email, "Logged out");
+            await signOut(auth);
+        });
+        delegateEvent('.app-container', 'click', '#printBtn', async () => {
+            showToast('Generating PDF for print...', 'info', 2000);
+            try {
+                const result = await generateFinancePDF('print');
+                if (!result) return; // No permission
+                const { blob, filename } = result;
+                const blobUrl = URL.createObjectURL(blob);
+                window.open(blobUrl, '_blank');
+                await logActivity(currentUser.email, "Printed PDF report");
+                showToast('PDF opened — use Ctrl+P to print', 'success', 4000);
+            } catch (e) {
+                console.error('Print failed:', e);
+                showToast('Print failed, trying fallback...', 'warning');
+                window.print();
+                await logActivity(currentUser.email, "Printed (fallback)");
+            }
+        });
+        delegateEvent('.app-container', 'click', '#shareBtn', async () => {
+            showToast('Generating PDF report...', 'info', 2000);
+            try {
+                const result = await generateFinancePDF('share');
+                if (!result) return; // No permission
+                const { blob, filename } = result;
+                const file = new File([blob], filename, { type: 'application/pdf' });
+
+                // Try native share with file attachment (mobile)
+                if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                    try {
+                        await navigator.share({
+                            title: 'Finance Vault Report',
+                            text: 'Finance Vault — Financial Data Report (PDF)',
+                            files: [file]
+                        });
+                        await logActivity(currentUser.email, "Shared PDF via Web Share API");
+                        showToast('PDF shared successfully!', 'success');
+                        return;
+                    } catch (e) {
+                        if (e.name === 'AbortError') return; // User cancelled
+                    }
+                }
+
+                // Fallback: download the PDF file (desktop)
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                await logActivity(currentUser.email, "Downloaded PDF report (share)");
+                showToast('PDF downloaded for sharing!', 'success');
+            } catch (e) {
+                console.error('Share PDF failed:', e);
+                showToast('Failed to generate PDF for sharing', 'error');
+            }
+        });
+    }
+
+    // ===== AUTH UI =====
+    function renderAuthUI() {
+        const root = document.getElementById("appRoot");
+        root.innerHTML = `
+        <div class="flex items-center justify-center min-h-screen p-4 sm:p-6 bg-gradient-to-br from-brand-50 via-white to-purple-50">
+            <div class="w-full max-w-md fade-in-up">
+                <!-- Logo / Branding -->
+                <div class="text-center mb-6 sm:mb-8">
+                    <div class="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white font-bold text-xl sm:text-2xl shadow-xl shadow-brand-200 mx-auto mb-3 sm:mb-4">FV</div>
+                    <h1 class="text-xl sm:text-2xl font-bold text-surface-900">Finance Vault</h1>
+                    <p class="text-surface-500 text-xs sm:text-sm mt-1">Secure financial data management</p>
+                </div>
+
+                <!-- Auth Card -->
+                <div class="bg-white rounded-2xl shadow-xl shadow-surface-200/50 border border-surface-200/60 p-5 sm:p-6">
+                    <!-- Robot Face -->
+                    <div class="robot-container" id="robotContainer">
+                        <div class="robot-face">
+                            <div class="robot-antenna"><div class="robot-antenna-ball"></div></div>
+                            <div class="robot-head" id="robotHead">
+                                <div class="robot-eyes">
+                                    <div class="robot-eye" id="robotEyeL">
+                                        <div class="robot-eyeball"></div>
+                                        <div class="robot-eyelid"></div>
+                                    </div>
+                                    <div class="robot-eye" id="robotEyeR">
+                                        <div class="robot-eyeball"></div>
+                                        <div class="robot-eyelid"></div>
+                                    </div>
+                                </div>
+                                <div class="robot-mouth" id="robotMouth"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex gap-1 mb-5 sm:mb-6 bg-surface-100 rounded-xl p-1">
+                        <button class="tab-btn-auth flex-1 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium transition active min-h-[44px]" id="loginTab">Sign In</button>
+                        <button class="tab-btn-auth flex-1 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium transition text-surface-500 min-h-[44px]" id="requestTab">Request Access</button>
+                    </div>
+
+                    <div class="space-y-4">
+                        <div>
+                            <label class="text-xs font-medium text-surface-600 mb-1.5 block">Email</label>
+                            <input type="email" id="authEmail" placeholder="you@company.com" class="w-full px-4 py-3 rounded-xl border border-surface-200 text-base sm:text-sm focus:border-brand-400 focus:ring-2 focus:ring-brand-100 outline-none transition">
+                        </div>
+                        <div id="pwdGroup">
+                            <label class="text-xs font-medium text-surface-600 mb-1.5 block">Password</label>
+                            <div class="pwd-wrapper">
+                                <input type="password" id="authPassword" placeholder="Enter your password" class="w-full px-4 py-3 pr-12 rounded-xl border border-surface-200 text-base sm:text-sm focus:border-brand-400 focus:ring-2 focus:ring-brand-100 outline-none transition">
+                                <button type="button" class="eye-toggle-btn" id="eyeToggleBtn" tabindex="-1" aria-label="Toggle password visibility">
+                                    <svg id="eyeOpenIcon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                                    <svg id="eyeClosedIcon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M1 1l22 22"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="authError" class="text-red-500 text-xs hidden"></div>
+                        <button class="w-full bg-brand-600 text-white py-3 rounded-xl text-sm font-semibold hover:bg-brand-700 active:scale-[0.98] transition shadow-md shadow-brand-200 min-h-[48px]" id="authSubmitBtn">Sign In</button>
+                        <button class="w-full text-surface-400 text-xs hover:text-brand-600 transition py-2 min-h-[44px]" id="forgotPwdBtn">Forgot Password?</button>
+                    </div>
+                </div>
+
+                <p class="text-center text-xs text-surface-400 mt-6">Baghdad Time Zone · Firebase Powered</p>
+            </div>
+        </div>`;
+
+        let mode = 'login', passwordVisible = false;
+        const loginTab = document.getElementById('loginTab'), reqTab = document.getElementById('requestTab');
+        const submit = document.getElementById('authSubmitBtn'), emailInp = document.getElementById('authEmail');
+        const pwdInp = document.getElementById('authPassword'), pwdGrp = document.getElementById('pwdGroup');
+        const forgot = document.getElementById('forgotPwdBtn'), err = document.getElementById('authError');
+
+        function setMode(m) {
+            mode = m;
+            loginTab.classList.toggle('active', m === 'login'); loginTab.classList.toggle('text-surface-500', m !== 'login');
+            reqTab.classList.toggle('active', m === 'request'); reqTab.classList.toggle('text-surface-500', m !== 'request');
+            submit.textContent = m === 'login' ? 'Sign In' : 'Request Access';
+            pwdGrp.style.display = m === 'login' ? 'block' : 'none';
+            forgot.style.display = m === 'login' ? 'block' : 'none';
+            err.classList.add('hidden');
+            // Reset Robot eyes & password visibility
+            passwordVisible = false;
+            if (pwdInp) pwdInp.type = 'password';
+            const rL = document.getElementById('robotEyeL'), rR = document.getElementById('robotEyeR'), rH = document.getElementById('robotHead');
+            if (rL) rL.classList.remove('closed','peek');
+            if (rR) rR.classList.remove('closed','peek');
+            if (rH) rH.classList.remove('typing');
+            const eO = document.getElementById('eyeOpenIcon'), eC = document.getElementById('eyeClosedIcon');
+            if (eO) eO.style.display = 'block';
+            if (eC) eC.style.display = 'none';
+        }
+        loginTab.onclick = () => setMode('login');
+        reqTab.onclick = () => setMode('request');
+
+        function showError(msg) { err.textContent = msg; err.classList.remove('hidden'); }
+
+        async function handle() {
+            const email = emailInp.value.trim();
+            if (!email) { showError('Email is required.'); return; }
+            if (mode === 'login') {
+                const pwd = pwdInp.value;
+                if (!pwd) { showError('Password is required.'); return; }
+                try {
+                    await signInWithEmailAndPassword(auth, email, pwd);
+                } catch(e) { showError(e.message); }
+            } else {
+                submit.disabled = true; submit.textContent = 'Submitting...';
+                const ok = await submitAccessRequest(email);
+                submit.disabled = false; submit.textContent = 'Request Access';
+                if (ok) emailInp.value = '';
+            }
+        }
+        submit.onclick = handle;
+        forgot.onclick = async () => {
+            const email = emailInp.value.trim();
+            if (!email) { showError('Enter your email first.'); return; }
+            try { await sendPasswordResetEmail(auth, email); showToast('Password reset email sent!', 'success'); }
+            catch(e) { showError(e.message); }
+        };
+        [emailInp, pwdInp].forEach(i => i.addEventListener('keypress', e => { if (e.key === 'Enter') handle(); }));
+
+        // Robot animation & eye toggle
+        const robotEyeL = document.getElementById('robotEyeL');
+        const robotEyeR = document.getElementById('robotEyeR');
+        const robotHead = document.getElementById('robotHead');
+        const eyeToggleBtn = document.getElementById('eyeToggleBtn');
+        const eyeOpenIcon = document.getElementById('eyeOpenIcon');
+        const eyeClosedIcon = document.getElementById('eyeClosedIcon');
+
+        function openRobotEyes() {
+            if (robotEyeL) robotEyeL.classList.remove('closed', 'peek');
+            if (robotEyeR) robotEyeR.classList.remove('closed', 'peek');
+            if (robotHead) robotHead.classList.remove('typing');
+        }
+        function closeRobotEyes() {
+            if (robotEyeL) { robotEyeL.classList.add('closed'); robotEyeL.classList.remove('peek'); }
+            if (robotEyeR) { robotEyeR.classList.add('closed'); robotEyeR.classList.remove('peek'); }
+            if (robotHead) robotHead.classList.add('typing');
+        }
+        function peekRobotEye() {
+            if (robotEyeL) { robotEyeL.classList.remove('closed'); robotEyeL.classList.add('peek'); }
+            if (robotEyeR) { robotEyeR.classList.add('closed'); robotEyeR.classList.remove('peek'); }
+            if (robotHead) robotHead.classList.remove('typing');
+        }
+
+        if (pwdInp) {
+            pwdInp.addEventListener('focus', () => {
+                if (passwordVisible) peekRobotEye();
+                else closeRobotEyes();
+            });
+            pwdInp.addEventListener('blur', () => {
+                openRobotEyes();
+            });
+        }
+        if (eyeToggleBtn) {
+            eyeToggleBtn.addEventListener('mousedown', (e) => e.preventDefault());
+            eyeToggleBtn.addEventListener('click', () => {
+                passwordVisible = !passwordVisible;
+                pwdInp.type = passwordVisible ? 'text' : 'password';
+                if (eyeOpenIcon) eyeOpenIcon.style.display = passwordVisible ? 'none' : 'block';
+                if (eyeClosedIcon) eyeClosedIcon.style.display = passwordVisible ? 'block' : 'none';
+                if (passwordVisible) peekRobotEye();
+                else closeRobotEyes();
+            });
+        }
+    }
+
+    // ===== UTILITY =====
+    function escapeHtml(s) { if (s == null) return ''; return String(s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])); }
+
+    // ===== BOOTSTRAP =====
+    async function bootstrap() {
+        try {
+            await initializeFirebase();
+            document.getElementById('appRoot').innerHTML = `
+                <div class="flex flex-col items-center justify-center min-h-screen gap-3">
+                    <div class="spinner"></div>
+                    <p class="text-surface-500 text-sm font-medium">Loading Finance Vault...</p>
+                </div>`;
+
+            onAuthStateChanged(auth, async (user) => {
+                currentUser = user;
+                closeAllModals(); // Close any open modals on auth change
+                if (user) {
+                    const role = await getUserRole(user.uid);
+                    const isAdminEmail = user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+                    if (!isAdminEmail) {
+                        const viewers = await fbGet('viewers') || {};
+                        if (!role || role === 'revoked' || !viewers[user.uid]) {
+                            showToast('Account has been removed.', 'error');
+                            await signOut(auth); return;
+                        }
+                    }
+                    const roleRef = ref(db, `${PATHS.USER_ROLES}/${user.uid}`), viewersRef = ref(db, `viewers/${user.uid}`);
+                    if (window._roleUnsub) window._roleUnsub();
+                    if (window._viewerUnsub) window._viewerUnsub();
+                    window._roleUnsub = onValue(roleRef, async (snap) => {
+                        if (!snap.exists() || snap.val().role === 'revoked') { showToast('Access has been revoked.', 'error'); await signOut(auth); }
+                    });
+                    if (!isAdminEmail) window._viewerUnsub = onValue(viewersRef, async (snap) => {
+                        if (!snap.exists()) { showToast('Account has been removed.', 'error'); await signOut(auth); }
+                    });
+
+                    await loadActivityLog(); await loadPermissions(); await loadColumnsAndData(); await loadSnapshots();
+                    renderFullApp();
+                } else {
+                    if (window._roleUnsub) window._roleUnsub();
+                    if (window._viewerUnsub) window._viewerUnsub();
+                    renderAuthUI();
+                }
+            });
+        } catch (error) { console.error('Bootstrap failed:', error); }
+    }
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => bootstrap());
+    else bootstrap();
+})();
+</script>
+
+</body>
+</html>
