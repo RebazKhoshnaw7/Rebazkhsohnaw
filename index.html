@@ -606,6 +606,7 @@
     ];
 
     let invoiceData = [], accountsData = [], fibData = [];
+    let customTables = [];
     let viewerPermissions = {};
     let activityLog = []; const MAX_LOG_ENTRIES = 200;
     let snapshots = {};
@@ -623,7 +624,7 @@
     const PATHS = {
         USER_ROLES: 'userRoles', COLUMNS: 'columns', DATA: 'data',
         PERMISSIONS: 'permissions', ACTIVITY_LOG: 'activityLog',
-        SNAPSHOTS: 'snapshots', ACCESS_REQUESTS: 'accessRequests'
+        SNAPSHOTS: 'snapshots', ACCESS_REQUESTS: 'accessRequests', CUSTOM_TABLES: 'customTables'
     };
 
     async function fbGet(path) { try { const snap = await get(ref(db, path)); return snap.exists() ? snap.val() : null; } catch(e) { console.error('fbGet error:', e); return null; } }
@@ -685,8 +686,45 @@
         } catch(e) { console.error(e); }
     }
 
-    async function saveColumnsToStorage() { await fbUpdate(PATHS.COLUMNS, { invoice: invoiceColumns, accounts: accountsColumns, fib: fibColumns }); }
-    async function saveDataToStorage() { await fbUpdate(PATHS.DATA, { invoice: invoiceData, accounts: accountsData, fib: fibData }); }
+    async function loadCustomTables() {
+        const raw = await fbGet(PATHS.CUSTOM_TABLES);
+        customTables = sanitizeArray(raw).filter(t => t.id && t.title).map(t => {
+            const columns = sanitizeArray(t.columns);
+            return { id: t.id, title: t.title, columns, data: sanitizeArray(t.data).map(r => sanitizeRow(r, columns)) };
+        });
+    }
+    async function saveCustomTables() { await fbSet(PATHS.CUSTOM_TABLES, customTables); }
+
+    function getTableStore(tableName) {
+        if (tableName === 'invoice') return { cols: invoiceColumns, data: invoiceData };
+        if (tableName === 'accounts') return { cols: accountsColumns, data: accountsData };
+        if (tableName === 'fib') return { cols: fibColumns, data: fibData };
+        const t = customTables.find(ct => ct.id === tableName);
+        return t ? { cols: t.columns, data: t.data } : null;
+    }
+
+    async function createCustomTable(title, columnLabels) {
+        const id = 'custom_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+        const labels = columnLabels.length ? columnLabels : ['Column 1', 'Column 2', 'Column 3'];
+        const columns = labels.map((label, i) => ({ key: `col_${Date.now()}_${i}`, label }));
+        const row = { _cellColors: {} }; columns.forEach(c => row[c.key] = '');
+        customTables.push({ id, title, columns, data: [row] });
+        await saveCustomTables();
+        await logActivity(currentUser?.email, 'Added table', title);
+    }
+
+    async function deleteCustomTable(id) {
+        const idx = customTables.findIndex(t => t.id === id);
+        if (idx === -1) return;
+        const [removed] = customTables.splice(idx, 1);
+        await saveCustomTables();
+        Object.values(viewerPermissions).forEach(p => { if (p) delete p[id]; });
+        await savePermissions();
+        await logActivity(currentUser?.email, 'Deleted table', removed.title);
+    }
+
+    async function saveColumnsToStorage() { await fbUpdate(PATHS.COLUMNS, { invoice: invoiceColumns, accounts: accountsColumns, fib: fibColumns }); await saveCustomTables(); }
+    async function saveDataToStorage() { await fbUpdate(PATHS.DATA, { invoice: invoiceData, accounts: accountsData, fib: fibData }); await saveCustomTables(); }
     async function saveAllToStorage() { await saveColumnsToStorage(); await saveDataToStorage(); }
     async function getUserRole(uid) { const snap = await fbGet(`${PATHS.USER_ROLES}/${uid}`); return snap ? snap.role : null; }
     async function setUserRole(uid, role) { await fbSet(`${PATHS.USER_ROLES}/${uid}`, { role, email: currentUser?.email || '' }); }
@@ -1043,19 +1081,18 @@
         if (!label?.trim()) return false;
         const key = "col_" + Date.now() + "_" + Math.random().toString(36).substr(2,5);
         const col = { key, label: label.trim() };
-        if (tableName === 'invoice') { invoiceColumns.push(col); invoiceData.forEach(r => r[key] = ""); }
-        else if (tableName === 'accounts') { accountsColumns.push(col); accountsData.forEach(r => r[key] = ""); }
-        else { fibColumns.push(col); fibData.forEach(r => r[key] = ""); }
+        const store = getTableStore(tableName);
+        if (!store) return false;
+        store.cols.push(col); store.data.forEach(r => r[key] = "");
         await saveAllToStorage();
         await logActivity(currentUser?.email, `Added column to ${tableName}`, label);
         return true;
     }
 
     async function removeColumnFromTable(tableName, key) {
-        let cols, data;
-        if (tableName === 'invoice') { cols = invoiceColumns; data = invoiceData; }
-        else if (tableName === 'accounts') { cols = accountsColumns; data = accountsData; }
-        else { cols = fibColumns; data = fibData; }
+        const store = getTableStore(tableName);
+        if (!store) return false;
+        const { cols, data } = store;
         const idx = cols.findIndex(c => c.key === key);
         if (idx === -1) return false;
         cols.splice(idx, 1);
@@ -1363,7 +1400,7 @@
 
         // Check if user has ANY permission for this mode
         const permKey = mode;
-        const hasAnyTablePerm = invP[permKey] || accP[permKey] || fibP[permKey];
+        const hasAnyTablePerm = invP[permKey] || accP[permKey] || fibP[permKey] || customTables.some(t => getEffectivePerms(viewerPerms?.[t.id])[permKey]);
         if (!hasAnyTablePerm && !isAdmin) {
             showToast(`No ${mode} permission for any table. Contact admin.`, 'error', 4000);
             return null;
@@ -1400,6 +1437,10 @@
         if (invP.view && invP[permKey]) html += buildTable(invoiceData, invoiceColumns, 'Invoice Master Grid', '#1a53f5');
         if (accP.view && accP[permKey]) html += buildTable(accountsData, accountsColumns, 'Accounts Summary', '#059669');
         if (fibP.view && fibP[permKey]) html += buildTable(fibData, fibColumns, 'FIB Balance Request Details', '#7c3aed');
+        customTables.forEach(t => {
+            const p = getEffectivePerms(viewerPerms?.[t.id]);
+            if (p.view && p[permKey]) html += buildTable(t.data, t.columns, escapeHtml(t.title), '#0f766e');
+        });
 
         // Check if any table was actually included
         const hasContent = html.indexOf('margin-bottom:28px') !== -1;
@@ -1476,8 +1517,9 @@
             </th>`).join('');
 
         const invDC = invP.dragColumns, accDC = accP.dragColumns, fibDC = fibP.dragColumns;
-        const canPrintAny = isAdmin || (invP.print || accP.print || fibP.print);
-        const canShareAny = isAdmin || (invP.share || accP.share || fibP.share);
+        const customP = Object.fromEntries(customTables.map(t => [t.id, getEffectivePerms(viewerPerms?.[t.id])]));
+        const canPrintAny = isAdmin || (invP.print || accP.print || fibP.print) || Object.values(customP).some(p => p.print);
+        const canShareAny = isAdmin || (invP.share || accP.share || fibP.share) || Object.values(customP).some(p => p.share);
 
         let sections = '';
 
@@ -1575,6 +1617,48 @@
                     </table>
                 </div>
             </div>`;
+        }
+
+        customTables.forEach(t => {
+            const p = customP[t.id];
+            if (!(isAdmin || p.view)) return;
+            let btns = '';
+            if (isAdmin || p.addRow) btns += `<button data-table="${t.id}" class="custom-add-row inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium bg-brand-50 text-brand-700 hover:bg-brand-100 active:bg-brand-200 transition min-h-[36px] sm:min-h-[32px]"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg><span class="hidden sm:inline">Row</span><span class="sm:hidden">+</span></button>`;
+            if (isAdmin || p.addColumn) btns += `<button data-table="${t.id}" class="custom-add-col inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium bg-teal-50 text-teal-700 hover:bg-teal-100 active:bg-teal-200 transition min-h-[36px] sm:min-h-[32px]"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg><span class="hidden sm:inline">Column</span><span class="sm:hidden">Col</span></button>`;
+            if (isAdmin) btns += `<button data-table="${t.id}" class="custom-rename-table inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium bg-surface-100 text-surface-700 hover:bg-surface-200 transition min-h-[36px] sm:min-h-[32px]" title="Rename table"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg><span class="hidden sm:inline">Rename</span></button>`
+                + `<button data-table="${t.id}" class="custom-delete-table inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-600 hover:bg-red-100 active:bg-red-200 transition min-h-[36px] sm:min-h-[32px]" title="Delete table"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg><span class="hidden sm:inline">Delete</span></button>`;
+            sections += `
+            <div class="section-card bg-white rounded-2xl border border-surface-200/60 shadow-sm overflow-hidden fade-in-up" style="animation-delay:0.15s">
+                <div class="flex flex-wrap items-center justify-between gap-2 sm:gap-3 px-3 sm:px-6 py-3 sm:py-4 bg-gradient-to-r from-teal-50/60 to-white border-b border-surface-200">
+                    <div class="flex items-center gap-2 sm:gap-2.5">
+                        <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-teal-100 flex items-center justify-center text-teal-600">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg>
+                        </div>
+                        <h2 class="text-sm sm:text-lg font-bold bg-gradient-to-r from-teal-700 to-teal-900 bg-clip-text text-transparent">${escapeHtml(t.title)}</h2>
+                    </div>
+                    <div class="flex flex-wrap gap-1.5 sm:gap-2">${btns}</div>
+                </div>
+                <div class="overflow-x-auto px-1 sm:px-4 py-2 sm:py-3">
+                    <table class="editable-table w-full border-collapse min-w-[600px]" id="${t.id}-table">
+                        <thead><tr>
+                            <th class="w-[36px] bg-surface-50/80 border-b border-surface-200"></th>
+                            ${renderHeaders(t.columns, t.id, p, p.dragColumns)}
+                            <th class="w-[60px] bg-surface-50/80 border-b border-surface-200 text-xs font-semibold text-surface-400 uppercase">Act</th>
+                        </tr></thead>
+                        <tbody id="${t.id}-tbody"></tbody>
+                    </table>
+                </div>
+            </div>`;
+        });
+
+        if (isAdmin) {
+            sections += `
+            <button id="addTableBtn" class="no-print group w-full flex items-center justify-center gap-2 px-4 py-5 rounded-2xl border-2 border-dashed border-surface-300 text-surface-500 hover:border-brand-400 hover:text-brand-700 hover:bg-brand-50/50 active:bg-brand-100/60 transition min-h-[64px]">
+                <span class="w-8 h-8 rounded-lg bg-surface-100 group-hover:bg-brand-100 flex items-center justify-center transition">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                </span>
+                <span class="text-sm font-semibold">Add Table</span>
+            </button>`;
         }
 
         // Daily Reports & Snapshots section
@@ -1773,6 +1857,12 @@
                 renderDynamicTable("fib-tbody", fibData, fibColumns, isAdmin, "FIB", fibP);
                 initDraggableTable("fib-table", fibData, fibColumns, "FIB", fibP.dragRows, fibP.dragColumns);
             }
+            customTables.forEach(t => {
+                if (!document.getElementById(`${t.id}-tbody`)) return;
+                const p = customP[t.id];
+                renderDynamicTable(`${t.id}-tbody`, t.data, t.columns, isAdmin, t.title, p);
+                initDraggableTable(`${t.id}-table`, t.data, t.columns, t.title, p.dragRows, p.dragColumns);
+            });
             if (isAdmin) {
                 document.querySelectorAll('.remove-col-btn').forEach(b => b.replaceWith(b.cloneNode(true)));
                 delegateEvent('.app-container', 'click', '.remove-col-btn', async function(e) {
@@ -1810,12 +1900,7 @@
                 if (saved) return;
                 saved = true;
                 const newLabel = input.value.trim() || currentLabel;
-                let cols;
-                if (tableName === 'invoice') cols = invoiceColumns;
-                else if (tableName === 'accounts') cols = accountsColumns;
-                else cols = fibColumns;
-
-                const col = cols.find(c => c.key === colKey);
+                const col = getTableStore(tableName)?.cols.find(c => c.key === colKey);
                 if (col && col.label !== newLabel) {
                     col.label = newLabel;
                     await saveColumnsToStorage();
@@ -1838,8 +1923,52 @@
             });
         });
 
+        delegateEvent('.app-container', 'click', '.custom-add-row', async function() {
+            const t = customTables.find(ct => ct.id === this.dataset.table);
+            if (!t) return;
+            const nr = { _cellColors: {} }; t.columns.forEach(c => nr[c.key] = ""); t.data.push(nr);
+            await saveCustomTables(); refresh(); await logActivity(currentUser.email, `Added row to ${t.title}`);
+            showToast(`Row added to ${t.title}`, "success");
+        });
+        delegateEvent('.app-container', 'click', '.custom-add-col', async function() {
+            const t = customTables.find(ct => ct.id === this.dataset.table);
+            if (!t) return;
+            const n = await customPrompt('Column Name', 'Enter new column name', `Add Column to ${t.title}`);
+            if (n) { await addColumnToTable(t.id, n); renderFullApp(); }
+        });
+
         // Admin tab switching
         if (isAdmin) {
+            delegateEvent('.app-container', 'click', '#addTableBtn', async () => {
+                const title = (await customPrompt('Table Name', 'e.g. Supplier Payments', 'Add New Table'))?.trim();
+                if (!title) return;
+                const colsInput = await customPrompt('Columns (optional)', 'Comma-separated, e.g. Name, Amount, Status', 'Add New Table');
+                const labels = (colsInput || '').split(',').map(s => s.trim()).filter(Boolean);
+                await createCustomTable(title, labels);
+                renderFullApp();
+                showToast(`Table "${title}" added`, 'success');
+            });
+            delegateEvent('.app-container', 'click', '.custom-rename-table', async function() {
+                const t = customTables.find(ct => ct.id === this.dataset.table);
+                if (!t) return;
+                const title = (await customPrompt('Table Name', t.title, 'Rename Table'))?.trim();
+                if (!title || title === t.title) return;
+                const old = t.title; t.title = title;
+                await saveCustomTables();
+                await logActivity(currentUser.email, 'Renamed table', `${old} → ${title}`);
+                renderFullApp();
+                showToast(`Table renamed to "${title}"`, 'success');
+            });
+            delegateEvent('.app-container', 'click', '.custom-delete-table', async function() {
+                const t = customTables.find(ct => ct.id === this.dataset.table);
+                if (!t) return;
+                if (await customConfirm(`Delete the table "${t.title}" and all its data? This cannot be undone.`, 'Delete Table', true)) {
+                    await deleteCustomTable(t.id);
+                    renderFullApp();
+                    showToast(`Table "${t.title}" deleted`, 'info');
+                }
+            });
+
             document.querySelectorAll('.admin-tab').forEach(t => t.addEventListener('click', () => {
                 const target = t.dataset.tab;
                 lastActiveAdminTab = target;
@@ -1975,8 +2104,9 @@
                     { bg: '#fdf4ff', border: '#a855f7', text: '#9333ea', dot: '#c084fc' },   // violet
                     { bg: '#fff1f2', border: '#e11d48', text: '#be123c', dot: '#f43f5e' },   // rose
                 ];
-                const tables = ['invoice','accounts','fib','dailyReport','dashboard'];
+                const tables = ['invoice','accounts','fib', ...customTables.map(t => t.id), 'dailyReport','dashboard'];
                 const tableDisplayNames = { invoice: 'Invoice', accounts: 'Accounts', fib: 'FIB Balance Request Details', dailyReport: 'Daily Report', dashboard: 'Dashboard Overview' };
+                customTables.forEach(t => { tableDisplayNames[t.id] = t.title; });
                 for (let vi = 0; vi < viewers.length; vi++) {
                     const uid = viewers[vi];
                     const email = (await fbGet(`viewers/${uid}`)) || uid;
@@ -2344,7 +2474,7 @@
                         if (!snap.exists()) { showToast('Account has been removed.', 'error'); await signOut(auth); }
                     });
 
-                    await loadActivityLog(); await loadPermissions(); await loadColumnsAndData(); await loadSnapshots();
+                    await loadActivityLog(); await loadPermissions(); await loadCustomTables(); await loadColumnsAndData(); await loadSnapshots();
                     renderFullApp();
                 } else {
                     if (window._roleUnsub) window._roleUnsub();
