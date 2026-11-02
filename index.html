@@ -610,6 +610,7 @@
 
     let invoiceData = [], accountsData = [], fibData = [];
     let customTables = [];
+    let cellSelect = { tableId: null, items: [] };
     let viewerPermissions = {};
     let activityLog = []; const MAX_LOG_ENTRIES = 200;
     let snapshots = {};
@@ -1092,6 +1093,77 @@
         return true;
     }
 
+    function setCellPicked(el, on) {
+        el.classList.toggle('ring-2', on);
+        el.classList.toggle('ring-inset', on);
+        el.classList.toggle('ring-brand-500', on);
+    }
+
+    function toggleCellSelection(inp, rowIdx, colKey) {
+        const i = cellSelect.items.findIndex(s => s.rowIdx === rowIdx && s.colKey === colKey);
+        if (i === -1) cellSelect.items.push({ rowIdx, colKey }); else cellSelect.items.splice(i, 1);
+        setCellPicked(inp, i === -1);
+    }
+
+    async function applyCellAction(tableId, action) {
+        const store = getTableStore(tableId);
+        const items = cellSelect.tableId === tableId ? cellSelect.items : [];
+        if (!store || !items.length) { showToast('Select one or more cells first', 'warning'); return; }
+        const { cols, data } = store;
+        const BUILTIN_TITLES = { invoice: 'Invoice', accounts: 'Accounts', fib: 'FIB Balance Request Details' };
+        const title = BUILTIN_TITLES[tableId] || customTables.find(t => t.id === tableId)?.title || 'table';
+
+        if (action === 'center') {
+            const allCentered = items.every(s => data[s.rowIdx]?._cellAlign?.[s.colKey] === 'center');
+            items.forEach(s => {
+                const r = data[s.rowIdx];
+                if (!r) return;
+                r._cellAlign = { ...(r._cellAlign || {}) };
+                if (allCentered) delete r._cellAlign[s.colKey]; else r._cellAlign[s.colKey] = 'center';
+            });
+            cellSelect.items = [];
+            await saveDataToStorage();
+            await logActivity(currentUser?.email, allCentered ? 'Uncentered cells in' : 'Centered cells in', title);
+            renderFullApp();
+            return;
+        }
+
+        if (action === 'merge') {
+            if (new Set(items.map(s => s.rowIdx)).size !== 1) { showToast('Select cells in a single row to merge', 'warning'); return; }
+            if (items.length < 2) { showToast('Select at least two cells to merge', 'warning'); return; }
+            const row = data[items[0].rowIdx];
+            const idxs = items.map(s => cols.findIndex(c => c.key === s.colKey)).sort((a, b) => a - b);
+            if (idxs.some((v, i) => i > 0 && v !== idxs[i - 1] + 1)) { showToast('Merged cells must be next to each other', 'warning'); return; }
+            const first = idxs[0], last = idxs[idxs.length - 1];
+            const cutsSpan = cols.some((c, ci) => ci >= first && ci <= last && (row._spans?.[c.key] || 1) > 1 && ci + row._spans[c.key] - 1 > last);
+            if (cutsSpan) { showToast('That selection cuts through a merged cell', 'warning'); return; }
+            const hidden = idxs.slice(1).map(i => cols[i].key);
+            const hasContent = hidden.some(k => String(row[k] ?? '').trim() !== '');
+            if (hasContent && !(await customConfirm("Merging keeps only the first cell's text. The other selected cells will be cleared. Continue?", 'Merge Cells', true))) return;
+            row._spans = { ...(row._spans || {}) };
+            hidden.forEach(k => { delete row._spans[k]; row[k] = ''; });
+            row._spans[cols[first].key] = idxs.length;
+            cellSelect.items = [];
+            await saveDataToStorage();
+            await logActivity(currentUser?.email, 'Merged cells in', title);
+            renderFullApp();
+            return;
+        }
+
+        if (action === 'unmerge') {
+            let changed = false;
+            items.forEach(s => {
+                const r = data[s.rowIdx];
+                if (r?._spans?.[s.colKey]) { delete r._spans[s.colKey]; changed = true; }
+            });
+            if (!changed) { showToast('The selected cells are not merged', 'warning'); return; }
+            cellSelect.items = [];
+            await saveDataToStorage();
+            await logActivity(currentUser?.email, 'Unmerged cells in', title);
+            renderFullApp();
+        }
+    }
+
     async function removeColumnFromTable(tableName, key) {
         const store = getTableStore(tableName);
         if (!store) return false;
@@ -1099,7 +1171,12 @@
         const idx = cols.findIndex(c => c.key === key);
         if (idx === -1) return false;
         cols.splice(idx, 1);
-        data.forEach(r => { delete r[key]; if (r._cellColors) delete r._cellColors[key]; });
+        data.forEach(r => {
+            delete r[key];
+            if (r._cellColors) delete r._cellColors[key];
+            if (r._cellAlign) delete r._cellAlign[key];
+            delete r._spans;
+        });
         await saveAllToStorage();
         await logActivity(currentUser?.email, `Removed column from ${tableName}`, key);
         return true;
@@ -1123,6 +1200,7 @@
                     if (evt.oldIndex === evt.newIndex) return;
                     const moved = dataArr.splice(evt.oldIndex, 1)[0];
                     dataArr.splice(evt.newIndex, 0, moved);
+                    cellSelect.items = [];
                     await saveDataToStorage();
                     await logActivity(currentUser?.email, `Reordered rows in ${tableName}`, `${evt.oldIndex} → ${evt.newIndex}`);
                 }
@@ -1142,6 +1220,7 @@
                     dataArr.forEach(r => {
                         const nr = {}; keys.forEach(k => nr[k] = r[k] || '');
                         if (r._cellColors) nr._cellColors = r._cellColors;
+                        if (r._cellAlign) nr._cellAlign = r._cellAlign;
                         Object.keys(r).forEach(k => delete r[k]); Object.assign(r, nr);
                     });
                     await saveAllToStorage();
@@ -1153,6 +1232,18 @@
     }
 
     // ===== CELL COLOR PICKER =====
+    function getVisibleCells(row, cols) {
+        const covered = new Set();
+        const visible = [];
+        cols.forEach((col, ci) => {
+            if (covered.has(ci)) return;
+            const span = Math.min(row._spans?.[col.key] || 1, cols.length - ci);
+            for (let k = 1; k < span; k++) covered.add(ci + k);
+            visible.push({ col, span });
+        });
+        return visible;
+    }
+
     function getColorBrightness(hex) {
         if (!hex || !hex.startsWith('#') || hex.length < 7) return 255;
         const c = hex.replace('#', '');
@@ -1241,7 +1332,7 @@
     }
 
     // ===== RENDER DYNAMIC TABLE =====
-    function renderDynamicTable(tbodyId, data, cols, isAdmin, tableName, perms) {
+    function renderDynamicTable(tbodyId, tableId, data, cols, isAdmin, tableName, perms) {
         const tbody = document.getElementById(tbodyId);
         if (!tbody) return;
         tbody.innerHTML = "";
@@ -1260,14 +1351,23 @@
             tr.appendChild(tdHandle);
 
             // Data cells
-            cols.forEach(col => {
+            getVisibleCells(row, cols).forEach(({ col, span }) => {
                 const td = document.createElement("td");
                 td.className = "px-1 py-1.5";
+                if (span > 1) td.colSpan = span;
                 const inp = document.createElement("input");
                 inp.type = "text";
                 inp.className = "cell-input w-full border border-surface-200 rounded-lg px-3 py-3 text-sm bg-white disabled:bg-surface-50 disabled:text-surface-600 disabled:cursor-default";
                 inp.value = row[col.key] ?? "";
                 inp.disabled = !(isAdmin || canEdit);
+                const selecting = (isAdmin || canEdit) && cellSelect.tableId === tableId;
+                if (selecting) {
+                    inp.readOnly = true;
+                    inp.classList.add('cursor-pointer');
+                    setCellPicked(inp, cellSelect.items.some(s => s.rowIdx === idx && s.colKey === col.key));
+                    inp.addEventListener('click', () => toggleCellSelection(inp, idx, col.key));
+                }
+                if (row._cellAlign?.[col.key] === 'center') inp.style.textAlign = 'center';
                 // Apply cell color if exists
                 const cellColor = row._cellColors?.[col.key];
                 if (cellColor) {
@@ -1418,12 +1518,16 @@
                 const textColor = brightness < 128 ? '#ffffff' : '#1e293b';
                 return `background-color:${color};color:${textColor};-webkit-print-color-adjust:exact;print-color-adjust:exact`;
             };
+            const pdfCells = (r) => getVisibleCells(r, cols).map(({ col, span }) => {
+                const align = r._cellAlign?.[col.key] === 'center' ? 'text-align:center;' : '';
+                return `<td${span > 1 ? ` colspan="${span}"` : ''} style="padding:4px 7px;border:1px solid #e2e8f0;${align}${getCellStyle(r, col.key)}">${escapeHtml(r[col.key] || '')}</td>`;
+            }).join('');
             return `
             <div style="margin-bottom:28px">
                 <h2 style="font-size:15px;font-weight:700;color:${accent};margin:0 0 8px;border-bottom:2px solid ${accent};padding-bottom:4px">${title}</h2>
                 <table style="width:100%;border-collapse:collapse;font-size:9px;-webkit-print-color-adjust:exact;print-color-adjust:exact">
                     <thead><tr style="background:#f1f5f9;-webkit-print-color-adjust:exact;print-color-adjust:exact">${cols.map(c => `<th style="padding:5px 7px;text-align:left;border:1px solid #cbd5e1;font-weight:600;color:#334155;white-space:nowrap">${escapeHtml(c.label)}</th>`).join('')}</tr></thead>
-                    <tbody>${data.map(r => `<tr>${cols.map(c => `<td style="padding:4px 7px;border:1px solid #e2e8f0;${getCellStyle(r, c.key)}">${escapeHtml(r[c.key] || '')}</td>`).join('')}</tr>`).join('')}</tbody>
+                    <tbody>${data.map(r => `<tr>${pdfCells(r)}</tr>`).join('')}</tbody>
                 </table>
             </div>`;
         };
@@ -1506,11 +1610,26 @@
 
         const invP = getEffectivePerms(viewerPerms?.invoice), accP = getEffectivePerms(viewerPerms?.accounts), fibP = getEffectivePerms(viewerPerms?.fib), drP = getEffectivePerms(viewerPerms?.dailyReport), dashP = getEffectivePerms(viewerPerms?.dashboard);
 
+        const renderCellToolBtns = (table, perms) => {
+            if (!(isAdmin || perms.edit)) return '';
+            const selecting = cellSelect.tableId === table;
+            const base = 'inline-flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition min-h-[36px] sm:min-h-[32px]';
+            let btns = `<button data-table="${table}" class="cell-select-toggle ${base} ${selecting ? 'bg-surface-800 text-white hover:bg-surface-700' : 'bg-surface-100 text-surface-700 hover:bg-surface-200'}">${selecting ? 'Done' : 'Select cells'}</button>`;
+            if (selecting) {
+                ['merge', 'unmerge', 'center'].forEach(action => {
+                    const label = action.charAt(0).toUpperCase() + action.slice(1);
+                    btns += `<button data-table="${table}" data-action="${action}" class="cell-action-btn ${base} bg-teal-50 text-teal-700 hover:bg-teal-100">${label}</button>`;
+                });
+            }
+            return btns;
+        };
+
         const renderTableActionBtns = (table, perms) => {
             let btns = '';
             if (isAdmin || perms.addRow) btns += `<button id="add_${table}_row" class="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium bg-brand-50 text-brand-700 hover:bg-brand-100 active:bg-brand-200 transition min-h-[36px] sm:min-h-[32px]"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg><span class="hidden sm:inline">Row</span><span class="sm:hidden">+</span></button>`;
             if (isAdmin || perms.addColumn) btns += `<button id="add_${table}_col" class="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-50 text-purple-700 hover:bg-purple-100 active:bg-purple-200 transition min-h-[36px] sm:min-h-[32px]"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg><span class="hidden sm:inline">Column</span><span class="sm:hidden">Col</span></button>`;
             if (isAdmin) btns += `<button id="reset_${table}_btn" class="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-600 hover:bg-red-100 active:bg-red-200 transition min-h-[36px] sm:min-h-[32px]"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg><span class="hidden sm:inline">Reset</span><span class="sm:hidden">↺</span></button>`;
+            btns += renderCellToolBtns(table, perms);
             return btns;
         };
 
@@ -1625,7 +1744,7 @@
         customTables.forEach(t => {
             const p = customP[t.id];
             if (!(isAdmin || p.view)) return;
-            let btns = '';
+            let btns = renderCellToolBtns(t.id, p);
             if (isAdmin || p.addRow) btns += `<button data-table="${t.id}" class="custom-add-row inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium bg-brand-50 text-brand-700 hover:bg-brand-100 active:bg-brand-200 transition min-h-[36px] sm:min-h-[32px]"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg><span class="hidden sm:inline">Row</span><span class="sm:hidden">+</span></button>`;
             if (isAdmin || p.addColumn) btns += `<button data-table="${t.id}" class="custom-add-col inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium bg-teal-50 text-teal-700 hover:bg-teal-100 active:bg-teal-200 transition min-h-[36px] sm:min-h-[32px]"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg><span class="hidden sm:inline">Column</span><span class="sm:hidden">Col</span></button>`;
             if (isAdmin) btns += `<button data-table="${t.id}" class="custom-rename-table inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium bg-surface-100 text-surface-700 hover:bg-surface-200 transition min-h-[36px] sm:min-h-[32px]" title="Rename table"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg><span class="hidden sm:inline">Rename</span></button>`
@@ -1849,21 +1968,21 @@
         // ===== POST-RENDER SETUP =====
         const refresh = () => {
             if (document.getElementById("invoice-tbody")) {
-                renderDynamicTable("invoice-tbody", invoiceData, invoiceColumns, isAdmin, "Invoice", invP);
+                renderDynamicTable("invoice-tbody", 'invoice', invoiceData, invoiceColumns, isAdmin, "Invoice", invP);
                 initDraggableTable("invoice-table", invoiceData, invoiceColumns, "Invoice", invP.dragRows, invP.dragColumns);
             }
             if (document.getElementById("accounts-tbody")) {
-                renderDynamicTable("accounts-tbody", accountsData, accountsColumns, isAdmin, "Accounts", accP);
+                renderDynamicTable("accounts-tbody", 'accounts', accountsData, accountsColumns, isAdmin, "Accounts", accP);
                 initDraggableTable("accounts-table", accountsData, accountsColumns, "Accounts", accP.dragRows, accP.dragColumns);
             }
             if (document.getElementById("fib-tbody")) {
-                renderDynamicTable("fib-tbody", fibData, fibColumns, isAdmin, "FIB", fibP);
+                renderDynamicTable("fib-tbody", 'fib', fibData, fibColumns, isAdmin, "FIB", fibP);
                 initDraggableTable("fib-table", fibData, fibColumns, "FIB", fibP.dragRows, fibP.dragColumns);
             }
             customTables.forEach(t => {
                 if (!document.getElementById(`${t.id}-tbody`)) return;
                 const p = customP[t.id];
-                renderDynamicTable(`${t.id}-tbody`, t.data, t.columns, isAdmin, t.title, p);
+                renderDynamicTable(`${t.id}-tbody`, t.id, t.data, t.columns, isAdmin, t.title, p);
                 initDraggableTable(`${t.id}-table`, t.data, t.columns, t.title, p.dragRows, p.dragColumns);
             });
             if (isAdmin) {
@@ -1938,6 +2057,15 @@
             if (!t) return;
             const n = await customPrompt('Column Name', 'Enter new column name', `Add Column to ${t.title}`);
             if (n) { await addColumnToTable(t.id, n); renderFullApp(); }
+        });
+
+        delegateEvent('.app-container', 'click', '.cell-select-toggle', function() {
+            const id = this.dataset.table;
+            cellSelect = { tableId: cellSelect.tableId === id ? null : id, items: [] };
+            renderFullApp();
+        });
+        delegateEvent('.app-container', 'click', '.cell-action-btn', function() {
+            applyCellAction(this.dataset.table, this.dataset.action);
         });
 
         // Admin tab switching
