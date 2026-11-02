@@ -1093,6 +1093,14 @@
         return true;
     }
 
+    function getVerticalCoverage(data) {
+        const covered = new Set();
+        data.forEach((row, idx) => Object.entries(row._rowSpans || {}).forEach(([k, n]) => {
+            for (let j = 1; j < n; j++) covered.add(`${idx + j}|${k}`);
+        }));
+        return covered;
+    }
+
     function setCellPicked(el, on) {
         el.classList.toggle('ring-2', on);
         el.classList.toggle('ring-inset', on);
@@ -1103,6 +1111,27 @@
         const i = cellSelect.items.findIndex(s => s.rowIdx === rowIdx && s.colKey === colKey);
         if (i === -1) cellSelect.items.push({ rowIdx, colKey }); else cellSelect.items.splice(i, 1);
         setCellPicked(inp, i === -1);
+    }
+
+    async function mergeVertical(items, data, cols, title) {
+        const key = items[0].colKey;
+        const ci = cols.findIndex(c => c.key === key);
+        const rowIdxs = items.map(s => s.rowIdx).sort((a, b) => a - b);
+        if (rowIdxs.some((v, i) => i > 0 && v !== rowIdxs[i - 1] + 1)) { showToast('Merged cells must be next to each other', 'warning'); return; }
+        const first = rowIdxs[0], last = rowIdxs[rowIdxs.length - 1];
+        const crossesHorizontal = rowIdxs.some(i => cols.some((c, k) => { const n = data[i]._spans?.[c.key] || 1; return n > 1 && k <= ci && ci < k + n; }));
+        if (crossesHorizontal) { showToast('Unmerge the horizontal merge in these cells first', 'warning'); return; }
+        const cutsSpan = rowIdxs.some(i => (data[i]._rowSpans?.[key] || 1) > 1 && i + data[i]._rowSpans[key] - 1 > last);
+        if (cutsSpan) { showToast('That selection cuts through a merged cell', 'warning'); return; }
+        const hidden = rowIdxs.slice(1);
+        const hasContent = hidden.some(i => String(data[i][key] ?? '').trim() !== '');
+        if (hasContent && !(await customConfirm("Merging keeps only the top cell's text. The other selected cells will be cleared. Continue?", 'Merge Cells', true))) return;
+        hidden.forEach(i => { data[i][key] = ''; if (data[i]._rowSpans) delete data[i]._rowSpans[key]; });
+        data[first]._rowSpans = { ...(data[first]._rowSpans || {}), [key]: rowIdxs.length };
+        cellSelect.items = [];
+        await saveDataToStorage();
+        await logActivity(currentUser?.email, 'Merged cells in', title);
+        renderFullApp();
     }
 
     async function applyHeaderAction(tableId, action, items, cols, title) {
@@ -1159,10 +1188,12 @@
         }
 
         if (action === 'merge') {
-            if (new Set(items.map(s => s.rowIdx)).size !== 1) { showToast('Select cells in a single row to merge', 'warning'); return; }
+            if (new Set(items.map(s => s.colKey)).size === 1 && items.length > 1) { await mergeVertical(items, data, cols, title); return; }
+            if (new Set(items.map(s => s.rowIdx)).size !== 1) { showToast('Select cells in one row or one column to merge', 'warning'); return; }
             if (items.length < 2) { showToast('Select at least two cells to merge', 'warning'); return; }
             const row = data[items[0].rowIdx];
             const idxs = items.map(s => cols.findIndex(c => c.key === s.colKey)).sort((a, b) => a - b);
+            if (items.some(s => (row._rowSpans?.[s.colKey] || 1) > 1)) { showToast('Unmerge the vertical merge in these cells first', 'warning'); return; }
             if (idxs.some((v, i) => i > 0 && v !== idxs[i - 1] + 1)) { showToast('Merged cells must be next to each other', 'warning'); return; }
             const first = idxs[0], last = idxs[idxs.length - 1];
             const cutsSpan = cols.some((c, ci) => ci >= first && ci <= last && (row._spans?.[c.key] || 1) > 1 && ci + row._spans[c.key] - 1 > last);
@@ -1185,6 +1216,7 @@
             items.forEach(s => {
                 const r = data[s.rowIdx];
                 if (r?._spans?.[s.colKey]) { delete r._spans[s.colKey]; changed = true; }
+                if (r?._rowSpans?.[s.colKey]) { delete r._rowSpans[s.colKey]; changed = true; }
             });
             if (!changed) { showToast('The selected cells are not merged', 'warning'); return; }
             cellSelect.items = [];
@@ -1207,6 +1239,7 @@
             if (r._cellColors) delete r._cellColors[key];
             if (r._cellAlign) delete r._cellAlign[key];
             delete r._spans;
+            delete r._rowSpans?.[key];
         });
         await saveAllToStorage();
         await logActivity(currentUser?.email, `Removed column from ${tableName}`, key);
@@ -1222,7 +1255,7 @@
         if (tbody._sortable) tbody._sortable.destroy();
         if (thead._sortable) thead._sortable.destroy();
 
-        if (canDragRows) {
+        if (canDragRows && !dataArr.some(r => Object.keys(r._rowSpans || {}).length)) {
             tbody._sortable = new Sortable(tbody, {
                 animation: 150, handle: '.drag-handle', draggable: 'tr',
                 ghostClass: 'sortable-ghost', chosenClass: 'sortable-chosen',
@@ -1264,11 +1297,11 @@
     }
 
     // ===== CELL COLOR PICKER =====
-    function getVisibleCells(cols, spanOf) {
+    function getVisibleCells(cols, spanOf, skip = () => false) {
         const covered = new Set();
         const visible = [];
         cols.forEach((col, ci) => {
-            if (covered.has(ci)) return;
+            if (covered.has(ci) || skip(col)) return;
             const span = Math.min(spanOf(col) || 1, cols.length - ci);
             for (let k = 1; k < span; k++) covered.add(ci + k);
             visible.push({ col, span });
@@ -1368,7 +1401,7 @@
         const tbody = document.getElementById(tbodyId);
         if (!tbody) return;
         tbody.innerHTML = "";
-        const canEdit = perms.edit, canDel = perms.deleteRow, canDrag = perms.dragRows || false;
+        const canEdit = perms.edit, canDel = perms.deleteRow, canDrag = (perms.dragRows || false) && !data.some(r => Object.keys(r._rowSpans || {}).length), vCovered = getVerticalCoverage(data);
 
         data.forEach((row, idx) => {
             const tr = document.createElement("tr");
@@ -1383,10 +1416,11 @@
             tr.appendChild(tdHandle);
 
             // Data cells
-            getVisibleCells(cols, c => row._spans?.[c.key]).forEach(({ col, span }) => {
+            getVisibleCells(cols, c => row._spans?.[c.key], c => vCovered.has(`${idx}|${c.key}`)).forEach(({ col, span }) => {
                 const td = document.createElement("td");
                 td.className = "px-1 py-1.5";
                 if (span > 1) td.colSpan = span;
+                if (row._rowSpans?.[col.key] > 1) td.rowSpan = row._rowSpans[col.key];
                 const inp = document.createElement("input");
                 inp.type = "text";
                 inp.className = "cell-input w-full border border-surface-200 rounded-lg px-3 py-3 text-sm bg-white disabled:bg-surface-50 disabled:text-surface-600 disabled:cursor-default";
@@ -1444,6 +1478,7 @@
             if (!delBtn.disabled) {
                 delBtn.addEventListener("click", async () => {
                     if (data.length === 1) { showToast("Cannot delete the last row.", "warning"); return; }
+                    if (data.some((r, j) => Object.entries(r._rowSpans || {}).some(([, n]) => idx >= j && idx < j + n))) { showToast("Unmerge the vertical cells in this row before deleting it.", "warning"); return; }
                     if (await customConfirm(`Delete row #${idx+1}?`, 'Delete Row', true)) {
                         data.splice(idx, 1);
                         await saveDataToStorage();
@@ -1550,16 +1585,17 @@
                 const textColor = brightness < 128 ? '#ffffff' : '#1e293b';
                 return `background-color:${color};color:${textColor};-webkit-print-color-adjust:exact;print-color-adjust:exact`;
             };
-            const pdfCells = (r) => getVisibleCells(cols, c => r._spans?.[c.key]).map(({ col, span }) => {
+            const vCov = getVerticalCoverage(data);
+            const pdfCells = (r, ri) => getVisibleCells(cols, c => r._spans?.[c.key], c => vCov.has(`${ri}|${c.key}`)).map(({ col, span }) => {
                 const align = r._cellAlign?.[col.key] === 'center' ? 'text-align:center;' : '';
-                return `<td${span > 1 ? ` colspan="${span}"` : ''} style="padding:4px 7px;border:1px solid #e2e8f0;${align}${getCellStyle(r, col.key)}">${escapeHtml(r[col.key] || '')}</td>`;
+                return `<td${r._rowSpans?.[col.key] > 1 ? ` rowspan="${r._rowSpans[col.key]}"` : ''}${span > 1 ? ` colspan="${span}"` : ''} style="padding:4px 7px;border:1px solid #e2e8f0;${align}${getCellStyle(r, col.key)}">${escapeHtml(r[col.key] || '')}</td>`;
             }).join('');
             return `
             <div style="margin-bottom:28px">
                 <h2 style="font-size:15px;font-weight:700;color:${accent};margin:0 0 8px;border-bottom:2px solid ${accent};padding-bottom:4px">${title}</h2>
                 <table style="width:100%;border-collapse:collapse;font-size:9px;-webkit-print-color-adjust:exact;print-color-adjust:exact">
                     <thead><tr style="background:#f1f5f9;-webkit-print-color-adjust:exact;print-color-adjust:exact">${getVisibleCells(cols, c => c.headerSpan).map(({ col: c, span }) => `<th${span > 1 ? ` colspan="${span}"` : ''} style="padding:5px 7px;text-align:${c.headerAlign === 'center' ? 'center' : 'left'};border:1px solid #cbd5e1;font-weight:600;color:#334155;white-space:nowrap">${escapeHtml(c.label)}</th>`).join('')}</tr></thead>
-                    <tbody>${data.map(r => `<tr>${pdfCells(r)}</tr>`).join('')}</tbody>
+                    <tbody>${data.map((r, ri) => `<tr>${pdfCells(r, ri)}</tr>`).join('')}</tbody>
                 </table>
             </div>`;
         };
